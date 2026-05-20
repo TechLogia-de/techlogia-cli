@@ -290,13 +290,27 @@ export const loginCommand = new Command("login")
 export const logoutCommand = new Command("logout")
   .description("Lokale Sitzung beenden + Refresh-Token serverseitig blacklisten")
   .action(async () => {
+    // Server-Blacklist ist best-effort — wenn die API down ist, loggen
+    // wir trotzdem lokal aus damit der User nicht stuck ist. Wir tracken
+    // aber ob das Server-Logout erfolgreich war, damit User informiert
+    // wird falls der Token serverseitig noch gueltig bleibt.
+    let serverLogoutOk = false;
     try {
-      // Server-Blacklist ist best-effort — wenn die API down ist, loggen
-      // wir trotzdem lokal aus damit der User nicht stuck ist.
-      await api.post("/api/auth/logout").catch(() => undefined);
-    } finally {
-      await clearTokens();
+      await api.post("/api/auth/logout");
+      serverLogoutOk = true;
+    } catch {
+      serverLogoutOk = false;
+    }
+    await clearTokens();
+    if (serverLogoutOk) {
       ui.success("Abgemeldet.");
+    } else {
+      ui.success("Lokal abgemeldet.");
+      ui.warn(
+        "Server-Logout fehlgeschlagen — Token bleibt bis zum natuerlichen Ablauf "
+          + "(Access ~24h, Refresh ~7 Tage) serverseitig gueltig. "
+          + "Im Zweifel: kompromittiertes Geraet abschalten.",
+      );
     }
   });
 

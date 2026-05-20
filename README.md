@@ -15,6 +15,12 @@ npm install -g techlogia
 Auf Systemen ohne Secret-Store fällt der Storage automatisch auf eine
 `chmod 600`-Datei unter `~/.techlogia/tokens.json` zurück.
 
+> **Linux-Hinweis**: Auf Linux-Servern ohne GUI fehlt oft `libsecret`.
+> Für den sicheren OS-Keychain-Pfad installiere `libsecret-1-dev`
+> (Ubuntu/Debian) bzw. `libsecret-devel` (Fedora). Sonst nutzt die CLI
+> automatisch den File-Fallback — funktional identisch, aber gegenüber
+> Malware mit User-Read-Rechten weniger gut geschützt.
+
 ## Persona-Varianten
 
 Die CLI passt das Hauptmenü an Deine Rolle an — Server bleibt Source-of-Truth
@@ -60,7 +66,11 @@ techlogia lab read <lesson-slug>
 # VM-Session starten / Status / Stop
 techlogia lab start docker-basics
 techlogia lab status
-techlogia lab stop <session-id>
+techlogia lab stop --last        # beendet die aktuelle Session
+
+# In die laufende VM einloggen (interaktiv)
+techlogia lab attach              # Strg+P Strg+Q = Detach (VM läuft weiter)
+techlogia lab validate <task>     # Backend prüft Task-Status auf der VM
 
 # Schüler-Login per Klassen-Code (kein Email/Passwort)
 techlogia student login

@@ -22,10 +22,12 @@ const persona: Persona = {
   allowedCommands: ["health", "blog", "legal", "login", "logout", "whoami", "config", "lab", "account"],
 };
 
+// Demo-Daten — generischer Fake-UUID + RFC-5737-Doku-IP. Keine echte
+// Production-Session, kein realer Hetzner-Endpoint.
 const activeSession: LabSession = {
-  session_id: "bdaadbf4-e8e4-44b7-ad23-8b405aefbb00",
+  session_id: "00000000-0000-0000-0000-000000000000",
   status: "READY",
-  vm_ipv4: "188.245.168.171",
+  vm_ipv4: "203.0.113.42",
   lesson_slug: "validator-tour",
   lesson_title: { de: "Validator-Rundgang", en: "Validator Tour" },
   cost_per_hour_eur: 0.29,
