@@ -22,7 +22,10 @@ function wsUrlFor(sessionUuid: string): string {
   const base = getApiBaseUrl();
   // axios baseURL ist https://...; WS-URL nimmt wss://
   const wsBase = base.replace(/^http/, "ws");
-  return `${wsBase}/ws/terminal/${sessionUuid}`;
+  // Backend mountet lab.router unter prefix=/api/lab. terminal.py definiert
+  // websocket("/ws/terminal/{session_id}") — finale URL ist also
+  // /api/lab/ws/terminal/{sid}.
+  return `${wsBase}/api/lab/ws/terminal/${sessionUuid}`;
 }
 
 async function resolveSession(targetId?: string): Promise<string | null> {
