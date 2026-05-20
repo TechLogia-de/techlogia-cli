@@ -1,118 +1,52 @@
 import readline from "node:readline";
+import prompts from "prompts";
 import { Command } from "commander";
 import { parse as shellParse } from "shell-quote";
-import { api, CLI_VERSION } from "./api/client";
-import { getAccessToken } from "./api/storage";
-import { AuthMeResponse } from "./api/types";
+import { api, apiAnon, CLI_VERSION } from "./api/client";
+import { clearTokens, getAccessToken, saveTokens } from "./api/storage";
+import { AuthMeResponse, LabSession, sessionId, TokenResponse } from "./api/types";
+import { config } from "./config";
 import { getPersonaForUser, Persona } from "./personas";
 import { ui } from "./ui";
 import { attachToSession, renderAttachResult } from "./commands/attach";
-import { sessionId } from "./api/types";
-import { LabSession } from "./api/types";
 import { buildPrompt as buildModernPrompt, renderHelpBox, renderWelcome } from "./banner";
 
-// `techlogia shell` — Interactive REPL. Spiegelt das Verhalten von
-// mongosh / aws shell / gcloud interactive: User tippt `techlogia` einmal,
-// landet in einem Prompt, gibt dort nur noch Sub-Commands ohne Prefix.
-//
-// Built-ins (in dieser Schicht, nicht via commander):
-//   help / ?   — Persona-spezifische Befehls-Liste
-//   exit/quit  — verlaesst die Shell
-//   clear      — clearscreen
-//   whoami     — Shortcut auf api/me-Roundtrip ohne commander-overhead
-//
-// Alles andere geht ueber den uebergebenen commander-Program. commander.parseAsync
-// wuerde normal process.exit aufrufen bei Fehler / --help — wir setzen
-// exitOverride() rekursiv damit beides ohne Crash zur Shell zurueckgibt.
+// `techlogia shell` — interaktiver REPL-Mode mit:
+//   - Slash-Prefix-Commands wie in Claude Code: /login, /logout, /help, /exit
+//   - `techlogia X` in der Shell wird zu `X` (Prefix-Strip, damit Muscle-Memory funktioniert)
+//   - Login/Logout MUTIEREN den Shell-State live — Prompt + Persona refreshen sofort
+//   - Anonyme Shell ist erlaubt: man kann `techlogia` ohne Login starten,
+//     dann zeigt der Welcome-Block "Gast" und der Prompt forderts auf zu login'en.
+
+interface ShellState {
+  me: AuthMeResponse | null;
+  persona: Persona;
+  activeSession: LabSession | null;
+}
 
 interface ShellContext {
   program: Command;
+  state: ShellState;
+  rl: readline.Interface;
   attachCurrentSession: () => Promise<void>;
   refreshActiveSession: () => Promise<void>;
-}
-
-function buildPromptString(persona: Persona, me: AuthMeResponse, activeSession: LabSession | null): string {
-  return buildModernPrompt({ me, persona, activeSession });
+  refreshIdentity: () => Promise<void>;
+  refreshPrompt: () => void;
 }
 
 function applyExitOverride(cmd: Command): void {
-  // Rekursiv exitOverride() setzen — sonst killt commander den Prozess bei
-  // --help oder unknown options. Wir wollen stattdessen eine Exception
-  // catchen und zur Shell zurueck.
   cmd.exitOverride();
   for (const sub of cmd.commands) applyExitOverride(sub);
 }
 
-function printBuiltinHelp(persona: Persona): void {
-  console.log(renderHelpBox(persona));
-}
-
 async function loadMe(): Promise<AuthMeResponse | null> {
+  const token = await getAccessToken();
+  if (!token) return null;
   try {
     return (await api.get<AuthMeResponse>("/api/auth/me")).data;
   } catch {
     return null;
   }
-}
-
-async function runOnce(line: string, ctx: ShellContext, persona: Persona, me: AuthMeResponse | null): Promise<{ exit: boolean }> {
-  const trimmed = line.trim();
-  if (!trimmed) return { exit: false };
-
-  // Built-ins direkt
-  const firstWord = trimmed.split(/\s+/)[0].toLowerCase();
-  if (firstWord === "exit" || firstWord === "quit") {
-    return { exit: true };
-  }
-  if (firstWord === "clear") {
-    console.clear();
-    return { exit: false };
-  }
-  if (firstWord === "help" || firstWord === "?") {
-    printBuiltinHelp(persona);
-    return { exit: false };
-  }
-  if (firstWord === "whoami") {
-    if (!me) {
-      ui.error("Nicht angemeldet.");
-    } else {
-      console.log("");
-      console.log(`  ${ui.bold(me.display_name || me.username || me.email)}`);
-      console.log(`  Rolle: ${ui.cyan(persona.label)} (${me.role})`);
-      if (me.xp_total != null) console.log(`  XP: ${me.xp_total}`);
-      console.log("");
-    }
-    return { exit: false };
-  }
-
-  // lab attach speziell behandeln — die existing CLI-action ruft process.exit
-  // im PromiseChain wenn die WS schliesst (was wir nicht wollen in der shell).
-  // Stattdessen rufen wir attachToSession direkt + pause readline waehrend.
-  if (trimmed === "lab attach" || trimmed.startsWith("lab attach ")) {
-    await ctx.attachCurrentSession();
-    return { exit: false };
-  }
-
-  // Restliche Commands ueber commander routen. shell-quote handhabt Quotes.
-  const tokens = shellParse(trimmed).filter((t): t is string => typeof t === "string");
-  if (tokens.length === 0) return { exit: false };
-
-  try {
-    // commander erwartet [node, script, ...args]. Wir mocken die ersten beiden.
-    await ctx.program.parseAsync(["node", "techlogia", ...tokens]);
-  } catch (err) {
-    // exitOverride wirft eine CommanderError-Instanz statt process.exit.
-    // exitCode 0 = --help/--version (kein Fehler, nur frueher exit).
-    const e = err as { code?: string; exitCode?: number; message?: string };
-    if (e?.code === "commander.help" || e?.code === "commander.version" || e?.exitCode === 0) {
-      // ok — Hilfe wurde gerendert, einfach zurueck.
-    } else if (e?.code === "commander.unknownCommand") {
-      ui.error(`Unbekannter Befehl: ${tokens[0]} — tipp ` + ui.cyan("help") + ui.red(" fuer Liste."));
-    } else if (e?.message) {
-      ui.error(e.message);
-    }
-  }
-  return { exit: false };
 }
 
 async function loadActiveSession(): Promise<LabSession | null> {
@@ -124,51 +58,283 @@ async function loadActiveSession(): Promise<LabSession | null> {
   }
 }
 
-export async function runShell(program: Command): Promise<void> {
-  applyExitOverride(program);
+// ─────────────────────────── Built-in handlers ───────────────────────────
 
-  const token = await getAccessToken();
-  const me = token ? await loadMe() : null;
-  const persona = getPersonaForUser(me);
-
-  if (!me) {
-    ui.warn("Nicht angemeldet — Shell-Mode braucht ein Login.");
-    ui.info("Erst: " + ui.cyan("techlogia login") + ui.dim(" (oder ") + ui.cyan("techlogia student login") + ui.dim(")"));
+async function handleLogin(ctx: ShellContext): Promise<void> {
+  // Im Shell-Mode loggen wir interaktiv ein. Wir nutzen den existing
+  // performLogin-Flow nicht direkt, sondern duplizieren ihn kurz hier —
+  // commander-action wuerde Promise nicht propagieren.
+  if (ctx.state.me) {
+    ui.warn(`Du bist bereits eingeloggt als ${ctx.state.me.email}. Erst /logout.`);
     return;
   }
 
-  let activeSession = persona.allowedCommands.includes("lab") ? await loadActiveSession() : null;
+  const lastEmail = config.get("lastEmail");
+  ctx.rl.pause();
+  const answers = await prompts([
+    {
+      type: "text",
+      name: "email",
+      message: "Email",
+      initial: lastEmail,
+      validate: (v: string) => (v.includes("@") ? true : "Bitte gueltige Email"),
+    },
+    {
+      type: "password",
+      name: "password",
+      message: "Passwort",
+      validate: (v: string) => (v.length >= 1 ? true : "Pflichtfeld"),
+    },
+  ]);
+  ctx.rl.resume();
 
-  console.log(renderWelcome({ me, persona, activeSession, version: CLI_VERSION }));
+  if (!answers.email || !answers.password) {
+    ui.warn("Abgebrochen.");
+    return;
+  }
+
+  try {
+    const resp = await apiAnon.post<TokenResponse>("/api/auth/login", {
+      email: answers.email,
+      password: answers.password,
+    });
+    await saveTokens(resp.data.access_token, resp.data.refresh_token);
+    config.set("lastEmail", answers.email);
+    await ctx.refreshIdentity();
+    await ctx.refreshActiveSession();
+    ctx.refreshPrompt();
+    const m = ctx.state.me as AuthMeResponse | null;
+    ui.success(`Angemeldet als ${m?.display_name || m?.email || answers.email}.`);
+  } catch (err) {
+    const ax = err as { response?: { status?: number; data?: Record<string, unknown> } };
+    const status = ax.response?.status;
+    if (status === 202) {
+      ui.warn("MFA erforderlich — bitte `techlogia login` (ausserhalb der Shell) nutzen.");
+    } else if (status === 412) {
+      ui.warn("Lab-AGB muss erst angenommen werden — bitte im Browser: https://techlogia.de/lab/agb");
+    } else if (status === 401) {
+      ui.error("Falsche Email oder falsches Passwort.");
+    } else {
+      ui.error(`Login fehlgeschlagen (Status ${status ?? "?"}).`);
+    }
+  }
+}
+
+async function handleStudentLogin(ctx: ShellContext): Promise<void> {
+  if (ctx.state.me) {
+    ui.warn(`Du bist bereits eingeloggt als ${ctx.state.me.email}. Erst /logout.`);
+    return;
+  }
+  ctx.rl.pause();
+  const answers = await prompts([
+    { type: "text", name: "code", message: "Klassen-Code", validate: (v: string) => (v.length >= 4 ? true : "min. 4 Zeichen") },
+    { type: "text", name: "name", message: "Dein Login-Name", validate: (v: string) => (v.length >= 2 ? true : "min. 2 Zeichen") },
+  ]);
+  ctx.rl.resume();
+  if (!answers.code || !answers.name) {
+    ui.warn("Abgebrochen.");
+    return;
+  }
+  try {
+    const resp = await apiAnon.post<TokenResponse>("/api/auth/student/login", {
+      class_code: answers.code,
+      student_login_name: answers.name,
+    });
+    await saveTokens(resp.data.access_token, resp.data.refresh_token);
+    await ctx.refreshIdentity();
+    await ctx.refreshActiveSession();
+    ctx.refreshPrompt();
+    ui.success(`Hallo ${answers.name}!`);
+  } catch {
+    ui.error("Schueler-Login fehlgeschlagen — Code oder Name pruefen.");
+  }
+}
+
+async function handleLogout(ctx: ShellContext): Promise<void> {
+  if (!ctx.state.me) {
+    ui.info("Du warst nicht eingeloggt.");
+    return;
+  }
+  try {
+    await api.post("/api/auth/logout").catch(() => undefined);
+  } finally {
+    await clearTokens();
+  }
+  ctx.state.me = null;
+  ctx.state.persona = getPersonaForUser(null);
+  ctx.state.activeSession = null;
+  ctx.refreshPrompt();
+  ui.success("Abgemeldet.");
+  console.log(ui.dim("  Tipp: /login um wieder einzusteigen — oder /exit zum Verlassen."));
+}
+
+// ─────────────────────────── Main dispatch ───────────────────────────
+
+async function runOnce(rawLine: string, ctx: ShellContext): Promise<{ exit: boolean }> {
+  let line = rawLine.trim();
+  if (!line) return { exit: false };
+
+  // Slash-Prefix optional — /login == login (analog Claude Code).
+  if (line.startsWith("/")) {
+    line = line.slice(1).trimStart();
+    if (!line) return { exit: false };
+  }
+
+  // `techlogia X` -> `X` (Muscle-Memory: User tippt manchmal das Prefix mit).
+  if (line === "techlogia") {
+    // bare "techlogia" → in der Shell sinnlos, ignorieren
+    return { exit: false };
+  }
+  if (line.startsWith("techlogia ")) {
+    line = line.slice("techlogia ".length).trimStart();
+  }
+
+  const firstWord = line.split(/\s+/)[0].toLowerCase();
+
+  // Built-ins die Shell-State beeinflussen — diese MUESSEN hier laufen
+  // statt via commander, weil commander den Shell-State nicht kennt.
+  switch (firstWord) {
+    case "exit":
+    case "quit":
+    case "q":
+      return { exit: true };
+    case "clear":
+      console.clear();
+      return { exit: false };
+    case "help":
+    case "?":
+      console.log(renderHelpBox(ctx.state.persona));
+      return { exit: false };
+    case "login":
+      await handleLogin(ctx);
+      return { exit: false };
+    case "logout":
+      await handleLogout(ctx);
+      return { exit: false };
+    case "student": {
+      // `student login` als Built-in — Schueler-Klassen-Code-Flow
+      const rest = line.split(/\s+/).slice(1)[0]?.toLowerCase();
+      if (rest === "login") {
+        await handleStudentLogin(ctx);
+        return { exit: false };
+      }
+      break;
+    }
+    case "whoami": {
+      if (!ctx.state.me) {
+        ui.warn("Nicht angemeldet.");
+        console.log(ui.dim("  ") + ui.cyan("/login") + ui.dim(" — Email/Passwort"));
+        console.log(ui.dim("  ") + ui.cyan("/student login") + ui.dim(" — Klassen-Code"));
+      } else {
+        console.log("");
+        console.log(`  ${ui.bold(ctx.state.me.display_name || ctx.state.me.username || ctx.state.me.email)}`);
+        console.log(`  Rolle: ${ui.cyan(ctx.state.persona.label)} (${ctx.state.me.role})`);
+        if (ctx.state.me.xp_total != null) console.log(`  XP: ${ctx.state.me.xp_total}`);
+        console.log("");
+      }
+      return { exit: false };
+    }
+  }
+
+  // lab attach — spezielle Promise/State-Handhabung
+  if (line === "lab attach" || line.startsWith("lab attach ")) {
+    await ctx.attachCurrentSession();
+    return { exit: false };
+  }
+
+  // Alles weitere via commander, mit shell-quote fuer korrekte Args.
+  const tokens = shellParse(line).filter((t): t is string => typeof t === "string");
+  if (tokens.length === 0) return { exit: false };
+
+  // Wenn nicht eingeloggt + Befehl braucht Auth -> friendly hint statt 401
+  if (!ctx.state.me && needsAuth(tokens[0])) {
+    ui.warn(`"${tokens[0]}" braucht ein Login.`);
+    console.log(ui.dim("  → ") + ui.cyan("/login") + ui.dim(" (Email/Passwort) oder ") + ui.cyan("/student login") + ui.dim(" (Klassen-Code)"));
+    return { exit: false };
+  }
+
+  try {
+    await ctx.program.parseAsync(["node", "techlogia", ...tokens]);
+  } catch (err) {
+    const e = err as { code?: string; exitCode?: number; message?: string };
+    if (e?.code === "commander.help" || e?.code === "commander.version" || e?.exitCode === 0) {
+      // ok — Hilfe wurde gerendert
+    } else if (e?.code === "commander.unknownCommand") {
+      ui.error(`Unbekannter Befehl: ${tokens[0]} — tipp ` + ui.cyan("/help") + ui.red(" fuer Liste."));
+    } else if (e?.message) {
+      ui.error(e.message);
+    }
+  }
+  return { exit: false };
+}
+
+function needsAuth(cmd: string): boolean {
+  // Welche Top-Level-Commands brauchen ein Login? (Frueher-Branch ohne 401-Roundtrip)
+  return ["lab", "class", "school", "admin", "account"].includes(cmd);
+}
+
+// ─────────────────────────── Shell entry ───────────────────────────
+
+export async function runShell(program: Command): Promise<void> {
+  applyExitOverride(program);
+
+  const me = await loadMe();
+  const persona = getPersonaForUser(me);
+  const activeSession = me && persona.allowedCommands.includes("lab") ? await loadActiveSession() : null;
+
+  const state: ShellState = { me, persona, activeSession };
+
+  // Welcome — egal ob eingeloggt oder nicht.
+  if (state.me) {
+    console.log(renderWelcome({ me: state.me, persona: state.persona, activeSession: state.activeSession, version: CLI_VERSION }));
+  } else {
+    renderGuestWelcome();
+  }
 
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: buildPromptString(persona, me, activeSession),
+    prompt: buildPromptFor(state),
     terminal: true,
-    historySize: 100,
+    historySize: 200,
   });
 
+  const refreshPrompt = (): void => {
+    rl.setPrompt(buildPromptFor(state));
+  };
+
+  const refreshIdentity = async (): Promise<void> => {
+    state.me = await loadMe();
+    state.persona = getPersonaForUser(state.me);
+  };
+
   const refreshActiveSession = async (): Promise<void> => {
-    activeSession = persona.allowedCommands.includes("lab") ? await loadActiveSession() : null;
-    rl.setPrompt(buildPromptString(persona, me, activeSession));
+    state.activeSession =
+      state.me && state.persona.allowedCommands.includes("lab")
+        ? await loadActiveSession()
+        : null;
+    refreshPrompt();
   };
 
   const attachCurrentSession = async (): Promise<void> => {
-    if (!activeSession) await refreshActiveSession();
-    if (!activeSession) {
-      ui.error("Keine aktive Session.");
-      ui.info("Erst starten: " + ui.cyan("lab start <modul>"));
+    if (!state.me) {
+      ui.warn("Erst /login.");
       return;
     }
-    const sid = sessionId(activeSession);
+    if (!state.activeSession) await refreshActiveSession();
+    if (!state.activeSession) {
+      ui.error("Keine aktive Session.");
+      console.log(ui.dim("  → ") + ui.cyan("lab start <modul>"));
+      return;
+    }
+    const sid = sessionId(state.activeSession);
     if (!sid) {
       ui.error("Aktive Session ohne ID.");
       return;
     }
     const tok = await getAccessToken();
     if (!tok) {
-      ui.error("Nicht angemeldet.");
+      ui.error("Token verloren — bitte /login.");
       return;
     }
     ui.info(`Verbinde mit ${ui.cyan(sid)}...  ${ui.dim("(Strg+P Strg+Q = Detach)")}`);
@@ -180,20 +346,27 @@ export async function runShell(program: Command): Promise<void> {
     rl.prompt();
   };
 
-  const ctx: ShellContext = { program, attachCurrentSession, refreshActiveSession };
+  const ctx: ShellContext = {
+    program,
+    state,
+    rl,
+    attachCurrentSession,
+    refreshActiveSession,
+    refreshIdentity,
+    refreshPrompt,
+  };
 
   rl.prompt();
 
   return new Promise<void>((resolve) => {
     rl.on("line", async (line) => {
       try {
-        const { exit } = await runOnce(line, ctx, persona, me);
+        const { exit } = await runOnce(line, ctx);
         if (exit) {
           rl.close();
           return;
         }
-        // Nach Befehlen die Session-State aendern koennen: refresh
-        const trimmed = line.trim();
+        const trimmed = line.trim().replace(/^\//, "").trim();
         if (
           trimmed.startsWith("lab start") ||
           trimmed.startsWith("lab stop") ||
@@ -213,4 +386,30 @@ export async function runShell(program: Command): Promise<void> {
       resolve();
     });
   });
+}
+
+function buildPromptFor(state: ShellState): string {
+  if (state.me) {
+    return buildModernPrompt({
+      me: state.me,
+      persona: state.persona,
+      activeSession: state.activeSession,
+    });
+  }
+  // Anonymer Prompt — minimal, blau ❯
+  const top = ui.dim("╭─ ") + ui.cyan("guest");
+  const bot = ui.dim("╰─") + ui.cyan("❯ ");
+  return top + "\n" + bot;
+}
+
+function renderGuestWelcome(): void {
+  console.log("");
+  console.log("  " + ui.bold("Techlogia Shell") + ui.dim("  ·  ") + ui.dim(`v${CLI_VERSION}`));
+  console.log("");
+  console.log("  " + ui.yellow("Nicht eingeloggt.") + " Tipp:");
+  console.log("    " + ui.cyan("/login") + ui.dim("           Email/Passwort"));
+  console.log("    " + ui.cyan("/student login") + ui.dim("   Klassen-Code (Schueler)"));
+  console.log("    " + ui.cyan("/help") + ui.dim("            sichtbare Befehle"));
+  console.log("    " + ui.cyan("/exit") + ui.dim("            Shell verlassen"));
+  console.log("");
 }
