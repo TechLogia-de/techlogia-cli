@@ -13,14 +13,19 @@ import { printError, ui } from "../ui";
 //   - PTY-Resize via JSON-Frame {type:"resize",cols,rows} (Phase 7 _bridge.py)
 //   - Detach via Strg+P Strg+Q (analog docker attach) — VM laeuft weiter,
 //     Sessions koennen so vom Browser uebernommen werden.
-//
-// WICHTIG: VM laeuft weiter wenn Detach. Nur `lab stop` zerstoert die VM.
 
 const DETACH_SEQUENCE = [0x10, 0x11]; // Ctrl-P, Ctrl-Q
 
+export type AttachResult =
+  | { kind: "detach" }
+  | { kind: "remote_close"; code: number; reason: string }
+  | { kind: "auth_failed" }
+  | { kind: "not_ready" }
+  | { kind: "not_found" }
+  | { kind: "error"; message: string };
+
 function wsUrlFor(sessionUuid: string): string {
   const base = getApiBaseUrl();
-  // axios baseURL ist https://...; WS-URL nimmt wss://
   const wsBase = base.replace(/^http/, "ws");
   // Backend mountet lab.router unter prefix=/api/lab. terminal.py definiert
   // websocket("/ws/terminal/{session_id}") — finale URL ist also
@@ -30,10 +35,147 @@ function wsUrlFor(sessionUuid: string): string {
 
 async function resolveSession(targetId?: string): Promise<string | null> {
   if (targetId) return targetId;
-  // Aktive Session via /active; analog `lab stop --last`.
   const resp = await api.get<LabSession | null>("/api/lab/sessions/active");
   if (!resp.data) return null;
   return sessionId(resp.data) ?? null;
+}
+
+/**
+ * Pure attach-function — resolved sobald die Verbindung endet (detach,
+ * remote close, oder error). Macht KEIN process.exit, damit die Shell
+ * nach Detach weiterlaufen kann. CLI-Caller koennen den Result auswerten.
+ */
+export function attachToSession(sid: string, token: string): Promise<AttachResult> {
+  return new Promise<AttachResult>((resolve) => {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+
+    if (!stdin.isTTY) {
+      resolve({ kind: "error", message: "Terminal-Attach braucht ein TTY." });
+      return;
+    }
+
+    const url = wsUrlFor(sid);
+    const ws = new WebSocket(url, ["techlogia.lab.v1", token], {
+      perMessageDeflate: false,
+    });
+
+    let detachIdx = 0;
+    let resolved = false;
+    const finalize = (result: AttachResult): void => {
+      if (resolved) return;
+      resolved = true;
+      if (stdin.isTTY) stdin.setRawMode(false);
+      stdin.removeListener("data", onStdinData);
+      stdout.removeListener("resize", sendResize);
+      stdin.pause();
+      if (ws.readyState === WebSocket.OPEN) ws.close(1000, "client_detach");
+      resolve(result);
+    };
+
+    const sendResize = (): void => {
+      if (ws.readyState !== WebSocket.OPEN) return;
+      ws.send(
+        JSON.stringify({
+          type: "resize",
+          cols: stdout.columns ?? 80,
+          rows: stdout.rows ?? 24,
+        }),
+      );
+    };
+
+    const onStdinData = (chunk: Buffer): void => {
+      for (let i = 0; i < chunk.length; i++) {
+        const b = chunk[i];
+        if (b === DETACH_SEQUENCE[detachIdx]) {
+          detachIdx++;
+          if (detachIdx === DETACH_SEQUENCE.length) {
+            finalize({ kind: "detach" });
+            return;
+          }
+        } else {
+          detachIdx = 0;
+        }
+      }
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(chunk);
+      }
+    };
+
+    ws.on("open", () => {
+      stdin.setRawMode(true);
+      stdin.resume();
+      sendResize();
+      stdin.on("data", onStdinData);
+      stdout.on("resize", sendResize);
+    });
+
+    ws.on("message", (data: Buffer | string) => {
+      const text = typeof data === "string" ? data : data.toString("binary");
+      if (text.startsWith("{")) {
+        try {
+          const obj = JSON.parse(text) as { type?: string };
+          if (obj.type === "reconnect_token" || obj.type === "heartbeat") return;
+        } catch {
+          // Kein JSON — als Terminal-Output behandeln (siehe unten).
+        }
+      }
+      stdout.write(data);
+    });
+
+    ws.on("close", (code: number, reasonBuf: Buffer) => {
+      const reason = reasonBuf.toString();
+      if (code === 4401 || code === 4403) finalize({ kind: "auth_failed" });
+      else if (code === 4404) finalize({ kind: "not_found" });
+      else if (code === 4409) finalize({ kind: "not_ready" });
+      else finalize({ kind: "remote_close", code, reason });
+    });
+
+    ws.on("error", (err: Error) => {
+      finalize({ kind: "error", message: err.message });
+    });
+
+    ws.on("unexpected-response", (_req, res) => {
+      finalize({
+        kind: "error",
+        message: `WS-Upgrade abgelehnt: HTTP ${res.statusCode}. Login pruefen.`,
+      });
+    });
+  });
+}
+
+export function renderAttachResult(result: AttachResult): void {
+  switch (result.kind) {
+    case "detach":
+      console.log("");
+      ui.success("Vom Terminal getrennt. VM laeuft weiter.");
+      break;
+    case "remote_close":
+      if (result.code === 1000 || result.code === 1001) {
+        console.log("");
+        ui.dim("Terminal geschlossen.");
+      } else {
+        console.log("");
+        ui.error(`Verbindung verloren (Code ${result.code}): ${result.reason}`);
+      }
+      break;
+    case "auth_failed":
+      console.log("");
+      ui.error("Auth fehlgeschlagen — bitte neu einloggen.");
+      break;
+    case "not_ready":
+      console.log("");
+      ui.warn("Session noch nicht READY — kurz warten und nochmal versuchen.");
+      break;
+    case "not_found":
+      console.log("");
+      ui.error("Session unbekannt — bereits beendet?");
+      break;
+    case "error":
+      console.log("");
+      ui.error(result.message);
+      break;
+  }
 }
 
 export const attachCommand = new Command("attach")
@@ -47,142 +189,14 @@ export const attachCommand = new Command("attach")
         ui.info("Erst starten: " + ui.cyan("techlogia lab start <modul>"));
         return;
       }
-
       const token = await getAccessToken();
       if (!token) {
         ui.error("Nicht angemeldet.");
         return;
       }
-
-      if (!process.stdin.isTTY) {
-        ui.error("Terminal-Attach braucht ein TTY (interaktive Shell).");
-        return;
-      }
-
-      const url = wsUrlFor(sid);
       ui.info(`Verbinde mit ${ui.cyan(sid)}...`);
-      ui.dim("Detach: Strg+P Strg+Q (VM laeuft weiter). Beenden: techlogia lab stop --last");
-
-      // Subprotocol-Auth: erster Wert ist der Protocol-Name, zweiter der JWT
-      // (D-14, RFC 6455). Wenn das Subprotocol nicht akzeptiert wird, wirft
-      // das ws-Package einen UPGRADE-Fehler im 'unexpected-response'-Handler.
-      const ws = new WebSocket(url, ["techlogia.lab.v1", token], {
-        perMessageDeflate: false,
-      });
-
-      let detachIdx = 0;
-      const stdin = process.stdin;
-      const stdout = process.stdout;
-
-      const sendResize = (): void => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        ws.send(
-          JSON.stringify({
-            type: "resize",
-            cols: stdout.columns ?? 80,
-            rows: stdout.rows ?? 24,
-          }),
-        );
-      };
-
-      const cleanup = (msg: string, exitCode = 0): void => {
-        if (stdin.isTTY) stdin.setRawMode(false);
-        stdin.removeAllListeners("data");
-        stdin.pause();
-        stdout.removeListener("resize", sendResize);
-        if (ws.readyState === WebSocket.OPEN) ws.close(1000, "client_detach");
-        console.log("\r\n" + msg);
-        process.exit(exitCode);
-      };
-
-      ws.on("open", () => {
-        // Raw-Mode: jede Taste sofort an WS (keine Line-Buffering)
-        stdin.setRawMode(true);
-        stdin.resume();
-        sendResize();
-
-        stdin.on("data", (chunk: Buffer) => {
-          // Detach-Sequenz erkennen: zwei Bytes in Folge.
-          // chunk kann mehrere Bytes haben (Paste). Wir scannen byteweise.
-          for (let i = 0; i < chunk.length; i++) {
-            const b = chunk[i];
-            if (b === DETACH_SEQUENCE[detachIdx]) {
-              detachIdx++;
-              if (detachIdx === DETACH_SEQUENCE.length) {
-                cleanup(ui.green("✓ Vom Terminal getrennt. VM laeuft weiter."), 0);
-                return;
-              }
-            } else {
-              detachIdx = 0;
-            }
-          }
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(chunk);
-          }
-        });
-
-        stdout.on("resize", sendResize);
-      });
-
-      ws.on("message", (data: Buffer | string) => {
-        // Backend sendet entweder raw bytes (Terminal-Output) oder JSON-Frames
-        // (reconnect_token-Refresh, heartbeat). Wir versuchen JSON; wenn das
-        // failed: behandeln wir es als Terminal-Output und schreiben es raw.
-        const text = typeof data === "string" ? data : data.toString("binary");
-        if (text.startsWith("{")) {
-          try {
-            const obj = JSON.parse(text) as { type?: string };
-            if (obj.type === "reconnect_token" || obj.type === "heartbeat") {
-              // Stille verarbeiten — Token-Refresh + Heartbeat sind interne
-              // WS-Protocol-Frames, nicht Terminal-Output.
-              return;
-            }
-          } catch {
-            // Kein JSON — als Terminal-Output behandeln (siehe unten).
-          }
-        }
-        // Raw schreiben — ANSI-Escapes muessen unveraendert durchgereicht werden
-        // damit ncurses, vim, htop etc. korrekt rendern.
-        if (typeof data === "string") {
-          stdout.write(data);
-        } else {
-          stdout.write(data);
-        }
-      });
-
-      ws.on("close", (code: number, reasonBuf: Buffer) => {
-        const reason = reasonBuf.toString();
-        if (code === 1000 || code === 1001) {
-          cleanup(ui.dim("Terminal geschlossen."), 0);
-        } else if (code === 4401 || code === 4403) {
-          cleanup(ui.red("Auth fehlgeschlagen — neu einloggen via `techlogia login`."), 1);
-        } else if (code === 4404) {
-          cleanup(ui.red("Session unbekannt — bereits beendet?"), 1);
-        } else if (code === 4409) {
-          cleanup(
-            ui.yellow("Session noch nicht READY — kurz warten und nochmal versuchen."),
-            1,
-          );
-        } else {
-          cleanup(ui.red(`Verbindung verloren (Code ${code}): ${reason}`), 1);
-        }
-      });
-
-      ws.on("error", (err: Error) => {
-        cleanup(ui.red(`WS-Fehler: ${err.message}`), 1);
-      });
-
-      ws.on("unexpected-response", (_req, res) => {
-        cleanup(
-          ui.red(`WS-Upgrade abgelehnt: HTTP ${res.statusCode}. Login pruefen.`),
-          1,
-        );
-      });
-
-      // Sauberer Shutdown bei Strg+C — VM laeuft weiter, NICHT terminated.
-      process.on("SIGINT", () => {
-        if (ws.readyState === WebSocket.OPEN) ws.close(1000, "sigint");
-      });
+      const result = await attachToSession(sid, token);
+      renderAttachResult(result);
     } catch (err) {
       printError(err);
     }

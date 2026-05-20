@@ -5,6 +5,7 @@ import { getAccessToken } from "./api/storage";
 import { AuthMeResponse } from "./api/types";
 import { getAllPersonas, getPersonaForUser } from "./personas";
 import { ui } from "./ui";
+import { runShell } from "./shell";
 import { loginCommand, logoutCommand, whoamiCommand } from "./commands/auth";
 import { healthCommand, statusCommand } from "./commands/health";
 import { blogCommand } from "./commands/blog";
@@ -164,6 +165,13 @@ export async function runCli(): Promise<void> {
   program.addCommand(studentCommand);
 
   program
+    .command("shell")
+    .description("Interaktive Shell starten — alle Befehle ohne `techlogia`-Prefix")
+    .action(async () => {
+      await runShell(program);
+    });
+
+  program
     .command("personas")
     .description("Alle Persona-Varianten zeigen (Lerner, Lehrer, Admin, ...)")
     .action(() => {
@@ -178,10 +186,17 @@ export async function runCli(): Promise<void> {
       }
     });
 
-  // Ohne Argumente: persona-spezifisches Hilfe-Menue rendern.
-  // Wenn args > 2 → commander parsed normal.
+  // Ohne Argumente:
+  //   - eingeloggt → Shell-Mode (interactive REPL)
+  //   - nicht angemeldet → klassisches Help-Menu (zeigt login/health/blog)
+  // Wer Help statt Shell will, kann `techlogia --help` oder
+  // `techlogia personas` nutzen.
   if (process.argv.length <= 2) {
     const me = await loadCurrentUser();
+    if (me && process.stdin.isTTY) {
+      await runShell(program);
+      return;
+    }
     printPersonaHelp(me);
     return;
   }
