@@ -1,6 +1,6 @@
 {
   "name": "techlogia",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Techlogia Lab — Lernplattform als CLI. Module browsen, Lektionen lesen, VM-Sessions starten, Klassen verwalten — direkt im Terminal.",
   "type": "commonjs",
   "bin": {

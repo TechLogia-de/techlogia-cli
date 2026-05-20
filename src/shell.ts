@@ -1,7 +1,7 @@
 import readline from "node:readline";
 import { Command } from "commander";
 import { parse as shellParse } from "shell-quote";
-import { api } from "./api/client";
+import { api, CLI_VERSION } from "./api/client";
 import { getAccessToken } from "./api/storage";
 import { AuthMeResponse } from "./api/types";
 import { getPersonaForUser, Persona } from "./personas";
@@ -9,6 +9,7 @@ import { ui } from "./ui";
 import { attachToSession, renderAttachResult } from "./commands/attach";
 import { sessionId } from "./api/types";
 import { LabSession } from "./api/types";
+import { buildPrompt as buildModernPrompt, renderHelpBox, renderWelcome } from "./banner";
 
 // `techlogia shell` — Interactive REPL. Spiegelt das Verhalten von
 // mongosh / aws shell / gcloud interactive: User tippt `techlogia` einmal,
@@ -27,11 +28,11 @@ import { LabSession } from "./api/types";
 interface ShellContext {
   program: Command;
   attachCurrentSession: () => Promise<void>;
+  refreshActiveSession: () => Promise<void>;
 }
 
-function buildPrompt(persona: Persona, me: AuthMeResponse | null): string {
-  const name = me?.display_name || me?.username || me?.email || "guest";
-  return `${ui.bold("techlogia")} ${ui.dim("[")}${ui.cyan(persona.label)}${ui.dim(" · ")}${name}${ui.dim("]")} > `;
+function buildPromptString(persona: Persona, me: AuthMeResponse, activeSession: LabSession | null): string {
+  return buildModernPrompt({ me, persona, activeSession });
 }
 
 function applyExitOverride(cmd: Command): void {
@@ -43,71 +44,7 @@ function applyExitOverride(cmd: Command): void {
 }
 
 function printBuiltinHelp(persona: Persona): void {
-  console.log("");
-  console.log(ui.bold(`Verfuegbare Befehle — ${persona.label}`));
-  console.log(ui.dim("─".repeat(60)));
-  const groups: Array<[string, Array<[string, string]>]> = [
-    ["Built-ins", [
-      ["help / ?", "diese Liste"],
-      ["whoami", "Wer bin ich + Persona"],
-      ["clear", "Bildschirm leeren"],
-      ["exit / quit", "Shell beenden"],
-    ]],
-    ["Anmeldung", [
-      ["logout", "lokale Sitzung beenden"],
-    ]],
-    ["Allgemein", [
-      ["health", "API-Erreichbarkeit pruefen"],
-      ["blog list", "Blog-Beitraege"],
-      ["legal show impressum", "Rechtstext"],
-    ]],
-  ];
-  if (persona.allowedCommands.includes("lab")) {
-    groups.push(["Lab", [
-      ["lab modules", "Module browsen"],
-      ["lab lessons", "Lektionen anzeigen"],
-      ["lab read <slug>", "Lektion lesen"],
-      ["lab start <modul>", "VM-Session starten"],
-      ["lab status", "Aktive Session"],
-      ["lab attach", "in die VM einloggen"],
-      ["lab validate <task>", "Task pruefen"],
-      ["lab stop --last", "Session beenden"],
-      ["lab cost", "Kosten heute"],
-    ]]);
-  }
-  if (persona.allowedCommands.includes("class")) {
-    groups.push(["Klassen (Lehrer)", [
-      ["class list", "eigene Klassen"],
-      ["class create", "neue Klasse"],
-      ["class students <id>", "Schueler-Liste"],
-      ["class quota <id> --max <n>", "Tageslimit setzen"],
-    ]]);
-  }
-  if (persona.allowedCommands.includes("school")) {
-    groups.push(["Schule", [
-      ["school teachers", "Lehrer der Schule"],
-      ["school create-teacher", "neuen Lehrer anlegen"],
-      ["school classes", "alle Klassen"],
-    ]]);
-  }
-  if (persona.allowedCommands.includes("admin")) {
-    groups.push(["Admin", [
-      ["admin dashboard", "Dashboard"],
-      ["admin users", "Nutzer"],
-      ["admin lab-stats", "Lab-Statistiken"],
-    ]]);
-  }
-  for (const [groupName, entries] of groups) {
-    console.log("");
-    console.log(ui.bold(groupName));
-    for (const [cmd, desc] of entries) {
-      console.log(`  ${ui.cyan(cmd.padEnd(30))} ${ui.dim(desc)}`);
-    }
-  }
-  console.log("");
-  console.log(ui.dim("Hilfe zu einem Befehl: ") + ui.cyan("<befehl> --help"));
-  console.log(ui.dim("Tipp: ") + ui.cyan("Strg+D") + ui.dim(" zum Verlassen"));
-  console.log("");
+  console.log(renderHelpBox(persona));
 }
 
 async function loadMe(): Promise<AuthMeResponse | null> {
@@ -178,6 +115,15 @@ async function runOnce(line: string, ctx: ShellContext, persona: Persona, me: Au
   return { exit: false };
 }
 
+async function loadActiveSession(): Promise<LabSession | null> {
+  try {
+    const resp = await api.get<LabSession | null>("/api/lab/sessions/active");
+    return resp.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runShell(program: Command): Promise<void> {
   applyExitOverride(program);
 
@@ -191,30 +137,31 @@ export async function runShell(program: Command): Promise<void> {
     return;
   }
 
-  console.log("");
-  console.log(ui.bold("Techlogia Shell") + ui.dim(" — du bist drin."));
-  console.log(`  Angemeldet als ${ui.cyan(me.email)} — Rolle ${ui.bold(persona.label)}`);
-  console.log(ui.dim("  Tipp: ") + ui.cyan("help") + ui.dim(" zeigt deine Befehle · ") + ui.cyan("exit") + ui.dim(" verlaesst die Shell"));
-  console.log("");
+  let activeSession = persona.allowedCommands.includes("lab") ? await loadActiveSession() : null;
+
+  console.log(renderWelcome({ me, persona, activeSession, version: CLI_VERSION }));
 
   const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: buildPrompt(persona, me),
+    prompt: buildPromptString(persona, me, activeSession),
     terminal: true,
     historySize: 100,
   });
 
+  const refreshActiveSession = async (): Promise<void> => {
+    activeSession = persona.allowedCommands.includes("lab") ? await loadActiveSession() : null;
+    rl.setPrompt(buildPromptString(persona, me, activeSession));
+  };
+
   const attachCurrentSession = async (): Promise<void> => {
-    const sessResp = await api
-      .get<LabSession | null>("/api/lab/sessions/active")
-      .catch(() => ({ data: null }));
-    if (!sessResp.data) {
+    if (!activeSession) await refreshActiveSession();
+    if (!activeSession) {
       ui.error("Keine aktive Session.");
       ui.info("Erst starten: " + ui.cyan("lab start <modul>"));
       return;
     }
-    const sid = sessionId(sessResp.data);
+    const sid = sessionId(activeSession);
     if (!sid) {
       ui.error("Aktive Session ohne ID.");
       return;
@@ -224,17 +171,16 @@ export async function runShell(program: Command): Promise<void> {
       ui.error("Nicht angemeldet.");
       return;
     }
-    ui.info(`Verbinde mit ${ui.cyan(sid)}... (Strg+P Strg+Q zum Detach)`);
-    // readline pausieren — sonst frisst es die stdin-Bytes die fuer das WS
-    // gedacht sind. Nach Detach wieder aktivieren.
+    ui.info(`Verbinde mit ${ui.cyan(sid)}...  ${ui.dim("(Strg+P Strg+Q = Detach)")}`);
     rl.pause();
     const result = await attachToSession(sid, tok);
     renderAttachResult(result);
+    await refreshActiveSession();
     rl.resume();
     rl.prompt();
   };
 
-  const ctx: ShellContext = { program, attachCurrentSession };
+  const ctx: ShellContext = { program, attachCurrentSession, refreshActiveSession };
 
   rl.prompt();
 
@@ -246,6 +192,15 @@ export async function runShell(program: Command): Promise<void> {
           rl.close();
           return;
         }
+        // Nach Befehlen die Session-State aendern koennen: refresh
+        const trimmed = line.trim();
+        if (
+          trimmed.startsWith("lab start") ||
+          trimmed.startsWith("lab stop") ||
+          trimmed.startsWith("lab status")
+        ) {
+          await refreshActiveSession();
+        }
       } catch (err) {
         ui.error(String(err));
       }
@@ -253,7 +208,8 @@ export async function runShell(program: Command): Promise<void> {
     });
     rl.on("close", () => {
       console.log("");
-      ui.dim("Bis bald.");
+      console.log(ui.dim("  Bis bald."));
+      console.log("");
       resolve();
     });
   });
