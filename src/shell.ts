@@ -9,6 +9,7 @@ import { config } from "./config";
 import { getPersonaForUser, Persona } from "./personas";
 import { ui } from "./ui";
 import { attachToSession, renderAttachResult } from "./commands/attach";
+import { webLogin } from "./commands/auth";
 import { buildPrompt as buildModernPrompt, renderHelpBox, renderWelcome } from "./banner";
 
 // `techlogia shell` — interaktiver REPL-Mode mit:
@@ -61,62 +62,32 @@ async function loadActiveSession(): Promise<LabSession | null> {
 // ─────────────────────────── Built-in handlers ───────────────────────────
 
 async function handleLogin(ctx: ShellContext): Promise<void> {
-  // Im Shell-Mode loggen wir interaktiv ein. Wir nutzen den existing
-  // performLogin-Flow nicht direkt, sondern duplizieren ihn kurz hier —
-  // commander-action wuerde Promise nicht propagieren.
   if (ctx.state.me) {
     ui.warn(`Du bist bereits eingeloggt als ${ctx.state.me.email}. Erst /logout.`);
     return;
   }
 
-  const lastEmail = config.get("lastEmail");
+  ui.info("Browser-Login startet — Tab oeffnet sich automatisch.");
   ctx.rl.pause();
-  const answers = await prompts([
-    {
-      type: "text",
-      name: "email",
-      message: "Email",
-      initial: lastEmail,
-      validate: (v: string) => (v.includes("@") ? true : "Bitte gueltige Email"),
-    },
-    {
-      type: "password",
-      name: "password",
-      message: "Passwort",
-      validate: (v: string) => (v.length >= 1 ? true : "Pflichtfeld"),
-    },
-  ]);
+  const result = await webLogin();
   ctx.rl.resume();
 
-  if (!answers.email || !answers.password) {
-    ui.warn("Abgebrochen.");
+  if (!result.ok) {
+    ui.error(result.error ?? "Login fehlgeschlagen.");
     return;
   }
-
-  try {
-    const resp = await apiAnon.post<TokenResponse>("/api/auth/login", {
-      email: answers.email,
-      password: answers.password,
-    });
-    await saveTokens(resp.data.access_token, resp.data.refresh_token);
-    config.set("lastEmail", answers.email);
-    await ctx.refreshIdentity();
-    await ctx.refreshActiveSession();
-    ctx.refreshPrompt();
-    const m = ctx.state.me as AuthMeResponse | null;
-    ui.success(`Angemeldet als ${m?.display_name || m?.email || answers.email}.`);
-  } catch (err) {
-    const ax = err as { response?: { status?: number; data?: Record<string, unknown> } };
-    const status = ax.response?.status;
-    if (status === 202) {
-      ui.warn("MFA erforderlich — bitte `techlogia login` (ausserhalb der Shell) nutzen.");
-    } else if (status === 412) {
-      ui.warn("Lab-AGB muss erst angenommen werden — bitte im Browser: https://techlogia.de/lab/agb");
-    } else if (status === 401) {
-      ui.error("Falsche Email oder falsches Passwort.");
-    } else {
-      ui.error(`Login fehlgeschlagen (Status ${status ?? "?"}).`);
-    }
+  if (!result.access_token || !result.refresh_token) {
+    ui.error("Tokens fehlen in der Antwort.");
+    return;
+  }
+  await saveTokens(result.access_token, result.refresh_token);
+  await ctx.refreshIdentity();
+  await ctx.refreshActiveSession();
+  ctx.refreshPrompt();
+  const m = ctx.state.me as AuthMeResponse | null;
+  if (m) {
+    config.set("lastEmail", m.email);
+    ui.success(`Angemeldet als ${m.display_name || m.email}.`);
   }
 }
 
