@@ -13,11 +13,14 @@ import { webLogin } from "./commands/auth";
 import { buildPrompt as buildModernPrompt, renderHelpBox, renderWelcome } from "./banner";
 
 // `techlogia shell` — interaktiver REPL-Mode mit:
-//   - Slash-Prefix-Commands wie in Claude Code: /login, /logout, /help, /exit
-//   - `techlogia X` in der Shell wird zu `X` (Prefix-Strip, damit Muscle-Memory funktioniert)
-//   - Login/Logout MUTIEREN den Shell-State live — Prompt + Persona refreshen sofort
+//   - Slash-Prefix-Commands: /login, /logout, /help, /exit (optional)
+//   - `techlogia X` in der Shell wird zu `X` (Prefix-Strip, damit User die
+//     externe Aufruf-Syntax nicht extra lernen muss)
+//   - Login/Logout MUTIEREN den Shell-State live — Prompt + Persona
+//     refreshen sofort, kein Neustart noetig
 //   - Anonyme Shell ist erlaubt: man kann `techlogia` ohne Login starten,
-//     dann zeigt der Welcome-Block "Gast" und der Prompt forderts auf zu login'en.
+//     dann zeigt der Welcome-Block "Gast" und der Prompt forderts auf zu
+//     login'en.
 
 interface ShellState {
   me: AuthMeResponse | null;
@@ -145,7 +148,7 @@ async function runOnce(rawLine: string, ctx: ShellContext): Promise<{ exit: bool
   let line = rawLine.trim();
   if (!line) return { exit: false };
 
-  // Slash-Prefix optional — /login == login (analog Claude Code).
+  // Slash-Prefix optional — /login ist aequivalent zu login.
   if (line.startsWith("/")) {
     line = line.slice(1).trimStart();
     if (!line) return { exit: false };

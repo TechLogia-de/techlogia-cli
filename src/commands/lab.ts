@@ -185,8 +185,9 @@ labCommand
         ui.info("Keine Inhalte vorhanden.");
       }
 
-      // Aufgaben-Beschreibungen sind oft ausfuehrlich — wir zeigen nur die
-      // Titel-Liste. Detail-Render via `techlogia lab task <slug>` (TODO).
+      // Aufgaben-Beschreibungen sind oft ausfuehrlich — wir zeigen hier nur
+      // die Titel-Liste. Voller Task-Text via `lab validate <slug>` oder
+      // im Browser-Player.
 
       if (lesson.tasks && lesson.tasks.length > 0) {
         console.log("");
