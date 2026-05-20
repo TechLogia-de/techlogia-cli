@@ -1,0 +1,12 @@
+src/
+tests/
+node_modules/
+tsconfig.json
+tsup.config.ts
+.gitignore
+.github/
+*.log
+.env*
+coverage/
+.vitest-cache/
+PUBLISH.md
