@@ -149,6 +149,20 @@ export async function runCli(): Promise<void> {
     // Eigene Help-Routine die persona-spezifisch rendert.
     .helpOption("-h, --help", "Hilfe anzeigen");
 
+  // Nach erfolgreichem Login direkt in den Shell-Mode springen — User sieht
+  // alles in einem Terminal-Flow ohne zweiten Aufruf. Wir nutzen commander's
+  // postAction-Hook, der nach action() laeuft. Inner-Check: nur wenn ein
+  // Token tatsaechlich gespeichert wurde (sonst war Login fehlgeschlagen)
+  // und wir in einer interaktiven TTY-Session sind.
+  const launchShellIfLoggedIn = async (): Promise<void> => {
+    if (!process.stdin.isTTY) return;
+    const token = await getAccessToken();
+    if (!token) return;
+    await runShell(program);
+  };
+  loginCommand.hook("postAction", launchShellIfLoggedIn);
+  studentCommand.hook("postAction", launchShellIfLoggedIn);
+
   // Subcommands registrieren
   program.addCommand(loginCommand);
   program.addCommand(logoutCommand);
