@@ -24,7 +24,7 @@ const COL = {
   text: "#F2F2EF",
 };
 
-/** Linearer Hex-zu-Hex-Gradient ueber `text` (1 Zeile). */
+/** Linearer Hex-zu-Hex-Gradient über `text` (1 Zeile). */
 function gradientText(text: string, fromHex: string, toHex: string): string {
   const from = hexToRgb(fromHex);
   const to = hexToRgb(toHex);
@@ -122,7 +122,7 @@ export function renderWelcome(ctx: WelcomeContext): string {
     );
   }
 
-  // Klassen-Info (Schueler)
+  // Klassen-Info (Schüler)
   if (me.student_class_id) {
     lines.push(
       chalk.hex(COL.muted)("  │ ") +
@@ -215,7 +215,7 @@ export function buildPrompt(ctx: PromptContext): string {
   const inputLine = chalk.hex(COL.muted)("╰─") + chalk.hex(COL.primary).bold("❯ ");
 
   // \n ist Teil der prompt-string — readline rendert das aber als "Prompt
-  // ueber mehrere Zeilen" und der Cursor landet trotzdem richtig hinter
+  // über mehrere Zeilen" und der Cursor landet trotzdem richtig hinter
   // dem ❯. Funktioniert in modernen Terminals (iTerm2, kitty, Apple
   // Terminal).
   return contextLine + "\n" + inputLine;
@@ -252,7 +252,7 @@ export function renderHelpBox(persona: Persona): string {
       ["lab start <modul>", "VM-Session starten"],
       ["lab status", "aktive Session"],
       ["lab attach", "in die VM einloggen"],
-      ["lab validate <task>", "Task pruefen"],
+      ["lab validate <task>", "Task prüfen"],
       ["lab stop --last", "Session beenden"],
       ["lab cost", "Kosten heute"],
     ]]);
@@ -261,7 +261,7 @@ export function renderHelpBox(persona: Persona): string {
     sections.push(["Klassen (Lehrer)", [
       ["class list", "eigene Klassen"],
       ["class create", "neue Klasse"],
-      ["class students <id>", "Schueler-Liste"],
+      ["class students <id>", "Schüler-Liste"],
       ["class quota <id> --max <n>", "Tageslimit"],
     ]]);
   }

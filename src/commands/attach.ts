@@ -11,8 +11,8 @@ import { printError, ui } from "../ui";
 //   - WS-Subprotocol-Auth: ["techlogia.lab.v1", jwt] (Phase 9 D-14)
 //   - Stdin -> WS (raw bytes), WS -> Stdout (raw ANSI bytes)
 //   - PTY-Resize via JSON-Frame {type:"resize",cols,rows} (Phase 7 _bridge.py)
-//   - Detach via Strg+P Strg+Q (analog docker attach) — VM laeuft weiter,
-//     Sessions koennen so vom Browser uebernommen werden.
+//   - Detach via Strg+P Strg+Q (analog docker attach) — VM läuft weiter,
+//     Sessions können so vom Browser übernommen werden.
 
 const DETACH_SEQUENCE = [0x10, 0x11]; // Ctrl-P, Ctrl-Q
 
@@ -43,7 +43,7 @@ async function resolveSession(targetId?: string): Promise<string | null> {
 /**
  * Pure attach-function — resolved sobald die Verbindung endet (detach,
  * remote close, oder error). Macht KEIN process.exit, damit die Shell
- * nach Detach weiterlaufen kann. CLI-Caller koennen den Result auswerten.
+ * nach Detach weiterlaufen kann. CLI-Caller können den Result auswerten.
  */
 export function attachToSession(sid: string, token: string): Promise<AttachResult> {
   return new Promise<AttachResult>((resolve) => {
@@ -138,7 +138,7 @@ export function attachToSession(sid: string, token: string): Promise<AttachResul
     ws.on("unexpected-response", (_req, res) => {
       finalize({
         kind: "error",
-        message: `WS-Upgrade abgelehnt: HTTP ${res.statusCode}. Login pruefen.`,
+        message: `WS-Upgrade abgelehnt: HTTP ${res.statusCode}. Login prüfen.`,
       });
     });
   });
@@ -148,7 +148,7 @@ export function renderAttachResult(result: AttachResult): void {
   switch (result.kind) {
     case "detach":
       console.log("");
-      ui.success("Vom Terminal getrennt. VM laeuft weiter.");
+      ui.success("Vom Terminal getrennt. VM läuft weiter.");
       break;
     case "remote_close":
       if (result.code === 1000 || result.code === 1001) {
@@ -179,7 +179,7 @@ export function renderAttachResult(result: AttachResult): void {
 }
 
 export const attachCommand = new Command("attach")
-  .description("Terminal in die laufende Lab-VM oeffnen (Strg+P Strg+Q zum Detach)")
+  .description("Terminal in die laufende Lab-VM öffnen (Strg+P Strg+Q zum Detach)")
   .argument("[session_id]", "Session-UUID (default: aktive Session)")
   .action(async (sessionArg: string | undefined) => {
     try {

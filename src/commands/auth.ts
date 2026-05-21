@@ -60,7 +60,7 @@ async function performLogin(email: string, password: string): Promise<TokenRespo
       const provider = (data as { oauth_provider?: string }).oauth_provider;
       if (provider) {
         ui.error(`Dieses Konto nutzt ${provider}-Login. Email-Passwort funktioniert hier nicht.`);
-        ui.info(`Bitte im Browser ueber https://techlogia.de/login einloggen.`);
+        ui.info(`Bitte im Browser über https://techlogia.de/login einloggen.`);
         return null;
       }
       if (detail) ui.error(detail);
@@ -98,7 +98,7 @@ export interface WebLoginResult {
  *   4. Frontend: nach Login -> POST /api/auth/cli/init -> Code.
  *   5. Frontend redirected Browser zu localhost:PORT/?code=...&state=...
  *   6. Listener empfaengt, validiert state, POST /api/auth/cli/exchange.
- *   7. Tokens speichern, Server schliessen.
+ *   7. Tokens speichern, Server schließen.
  */
 export async function webLogin(): Promise<WebLoginResult> {
   return new Promise<WebLoginResult>((resolve) => {
@@ -151,7 +151,7 @@ export async function webLogin(): Promise<WebLoginResult> {
           `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Techlogia CLI</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#0F0F0E}
 h1{color:#10B981;margin-bottom:12px}p{color:#6B7280;line-height:1.6}</style></head>
-<body><h1>Login erfolgreich</h1><p>Du kannst dieses Fenster jetzt schliessen.<br>Geh zurueck zur Techlogia CLI.</p></body></html>`,
+<body><h1>Login erfolgreich</h1><p>Du kannst dieses Fenster jetzt schließen.<br>Geh zurück zur Techlogia CLI.</p></body></html>`,
         );
         finish({
           ok: true,
@@ -196,18 +196,18 @@ h1{color:#10B981;margin-bottom:12px}p{color:#6B7280;line-height:1.6}</style></he
 export const loginCommand = new Command("login")
   .description("Bei Techlogia anmelden — per Browser (default) oder Email/Passwort")
   .option("-e, --email <email>", "Email-Adresse (Terminal-Login statt Browser)")
-  .option("-p, --password <password>", "Passwort (UNSAFE: nur fuer CI/Test, sonst weglassen)")
+  .option("-p, --password <password>", "Passwort (UNSAFE: nur für CI/Test, sonst weglassen)")
   .option("--web", "Browser-Login erzwingen (Default wenn keine --email/--password angegeben)")
   .option("--terminal", "Email/Passwort im Terminal statt Browser")
   .action(async (opts: { email?: string; password?: string; web?: boolean; terminal?: boolean }) => {
     if (opts.password) {
       ui.warn(
-        "Passwort als CLI-Flag uebergeben — sichtbar in History/Process-List. Nur fuer CI.",
+        "Passwort als CLI-Flag übergeben — sichtbar in History/Process-List. Nur für CI.",
       );
     }
 
     // Browser-Flow ist Default, AUSSER --terminal explizit oder Email+Passwort
-    // bereits als Flag uebergeben (CI-Pattern).
+    // bereits als Flag übergeben (CI-Pattern).
     const useWeb =
       opts.web === true ||
       (!opts.terminal && !opts.email && !opts.password);
@@ -245,7 +245,7 @@ export const loginCommand = new Command("login")
         name: "email",
         message: "Email",
         initial: lastEmail,
-        validate: (v: string) => (v.includes("@") ? true : "Bitte gueltige Email"),
+        validate: (v: string) => (v.includes("@") ? true : "Bitte gültige Email"),
       },
       {
         type: opts.password ? null : "password",
@@ -262,7 +262,7 @@ export const loginCommand = new Command("login")
       return;
     }
 
-    const spinner = ora("Anmeldung laeuft...").start();
+    const spinner = ora("Anmeldung läuft...").start();
     try {
       const result = await performLogin(email, password);
       spinner.stop();
@@ -280,7 +280,7 @@ export const loginCommand = new Command("login")
       console.log(`  Rolle: ${ui.cyan(persona.label)} — ${ui.dim(persona.description)}`);
       console.log(`  Token-Speicher: ${ui.dim(storageBackend())}`);
       console.log("");
-      console.log(ui.dim("Tipp: `techlogia` ohne Argumente zeigt dir alle verfuegbaren Befehle."));
+      console.log(ui.dim("Tipp: `techlogia` ohne Argumente zeigt dir alle verfügbaren Befehle."));
     } catch (err) {
       spinner.stop();
       printError(err);
@@ -293,7 +293,7 @@ export const logoutCommand = new Command("logout")
     // Server-Blacklist ist best-effort — wenn die API down ist, loggen
     // wir trotzdem lokal aus damit der User nicht stuck ist. Wir tracken
     // aber ob das Server-Logout erfolgreich war, damit User informiert
-    // wird falls der Token serverseitig noch gueltig bleibt.
+    // wird falls der Token serverseitig noch gültig bleibt.
     let serverLogoutOk = false;
     try {
       await api.post("/api/auth/logout");
@@ -308,7 +308,7 @@ export const logoutCommand = new Command("logout")
       ui.success("Lokal abgemeldet.");
       ui.warn(
         "Server-Logout fehlgeschlagen — Token bleibt bis zum natuerlichen Ablauf "
-          + "(Access ~24h, Refresh ~7 Tage) serverseitig gueltig. "
+          + "(Access ~24h, Refresh ~7 Tage) serverseitig gültig. "
           + "Im Zweifel: kompromittiertes Geraet abschalten.",
       );
     }
@@ -333,7 +333,7 @@ export const whoamiCommand = new Command("whoami")
         console.log(`  XP        : ${me.xp_total} (Level ${level})`);
       }
       if (me.student_class_id) {
-        console.log(`  Klasse    : #${me.student_class_id} (Schueler-Login)`);
+        console.log(`  Klasse    : #${me.student_class_id} (Schüler-Login)`);
       }
       if (me.suspended_at) {
         console.log(`  ${ui.red("Konto gesperrt seit:")} ${me.suspended_at}`);

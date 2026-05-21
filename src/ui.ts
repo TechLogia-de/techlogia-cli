@@ -56,10 +56,10 @@ export function printError(err: unknown): void {
       ui.error("Zu viele Anfragen — bitte kurz warten.");
     } else if (status && status >= 500) {
       ui.error(`Server-Fehler (${status}): ${detail}`);
-      console.log(ui.dim("  → Status pruefen: ") + chalk.cyan("techlogia health"));
+      console.log(ui.dim("  → Status prüfen: ") + chalk.cyan("techlogia health"));
     } else if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND") {
       ui.error(`API nicht erreichbar (${err.config?.baseURL ?? "?"}).`);
-      console.log(ui.dim("  → Internet pruefen oder ") + chalk.cyan("TECHLOGIA_API") + ui.dim(" anpassen."));
+      console.log(ui.dim("  → Internet prüfen oder ") + chalk.cyan("TECHLOGIA_API") + ui.dim(" anpassen."));
     } else {
       ui.error(`API-Fehler ${status ?? ""}: ${detail}`);
     }

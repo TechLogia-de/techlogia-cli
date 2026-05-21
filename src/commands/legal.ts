@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { marked } from "marked";
-// @ts-expect-error - marked-terminal hat keine eigenen TS-Types fuer v7
+// @ts-expect-error - marked-terminal hat keine eigenen TS-Types für v7
 import { markedTerminal } from "marked-terminal";
 import { apiAnon } from "../api/client";
 import { LegalDocument, pickLocaleText } from "../api/types";
@@ -17,7 +17,7 @@ export const legalCommand = new Command("legal").description(
 
 legalCommand
   .command("list")
-  .description("Verfuegbare Rechtsdokumente")
+  .description("Verfügbare Rechtsdokumente")
   .action(() => {
     console.log("");
     console.log(ui.bold("Rechtsdokumente"));

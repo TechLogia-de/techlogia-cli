@@ -2,7 +2,7 @@ import { AuthMeResponse, UserRole } from "./api/types";
 
 // Persona-Definition spiegelt Backend-Rollen (siehe backend/app/models/user.py
 // UserRole). Wir derivieren clientseitig welche Befehl-Namespaces sichtbar
-// sind — REIN UI-Filter; Server bleibt Source-of-Truth fuer Authorization
+// sind — REIN UI-Filter; Server bleibt Source-of-Truth für Authorization
 // (Backend wirft 403 wenn die CLI doch was Falsches schickt).
 
 export type PersonaKind =
@@ -30,7 +30,7 @@ const PERSONAS: Record<PersonaKind, Persona> = {
   anonymous: {
     kind: "anonymous",
     label: "Gast",
-    description: "Nicht angemeldet — nur oeffentliche Befehle verfuegbar.",
+    description: "Nicht angemeldet — nur öffentliche Befehle verfügbar.",
     allowedCommands: [...PUBLIC_COMMANDS, "student"],
   },
   learner: {
@@ -41,14 +41,14 @@ const PERSONAS: Record<PersonaKind, Persona> = {
   },
   student: {
     kind: "student",
-    label: "Schueler",
-    description: "Schulklasse — eingeschraenkter Lab-Zugang ueber Klassen-Code.",
+    label: "Schüler",
+    description: "Schulklasse — eingeschraenkter Lab-Zugang über Klassen-Code.",
     allowedCommands: [...PUBLIC_COMMANDS, "lab", "account"],
   },
   teacher: {
     kind: "teacher",
     label: "Lehrer",
-    description: "Verwaltet Klassen, Schueler und Modul-Sichtbarkeit.",
+    description: "Verwaltet Klassen, Schüler und Modul-Sichtbarkeit.",
     allowedCommands: [...PUBLIC_COMMANDS, "lab", "account", "class"],
   },
   school_admin: {
@@ -79,8 +79,8 @@ const PERSONAS: Record<PersonaKind, Persona> = {
 
 export function getPersonaForUser(me: AuthMeResponse | null): Persona {
   if (!me) return PERSONAS.anonymous;
-  // Schueler-Sonderfall: student_class_id != null UND role == learner.
-  // Diese User koennen sich nicht per Email einloggen (Pseudo-Email
+  // Schüler-Sonderfall: student_class_id != null UND role == learner.
+  // Diese User können sich nicht per Email einloggen (Pseudo-Email
   // "student-<id>@class-<code>.local"), Catalog ist whitelist-gefiltert.
   if (me.role === "learner" && me.student_class_id != null) {
     return PERSONAS.student;

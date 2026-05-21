@@ -7,14 +7,14 @@ import { TokenResponse } from "../api/types";
 import { printError, ui } from "../ui";
 
 export const studentCommand = new Command("student").description(
-  "Schueler-Login per Klassen-Code (kein Email-Passwort)",
+  "Schüler-Login per Klassen-Code (kein Email-Passwort)",
 );
 
 studentCommand
   .command("login")
   .description("Anmelden mit Klassen-Code + Login-Name")
   .option("-c, --code <code>", "Klassen-Code (z.B. ABCD-1234)")
-  .option("-n, --name <name>", "Schueler-Login-Name")
+  .option("-n, --name <name>", "Schüler-Login-Name")
   .action(async (opts: { code?: string; name?: string }) => {
     try {
       const responses = await prompts([

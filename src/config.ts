@@ -10,7 +10,7 @@ export const config = new Conf<{
 }>({
   projectName: "techlogia",
   defaults: {
-    // Default zeigt auf Prod — kann via TECHLOGIA_API ueberschrieben werden
+    // Default zeigt auf Prod — kann via TECHLOGIA_API überschrieben werden
     // (Dev-Setups + CI). Nie auf localhost defaulten, sonst verwirrt der
     // erste "techlogia health" jeden frisch installierten User.
     apiBaseUrl: "https://techlogia.de",
@@ -19,6 +19,6 @@ export const config = new Conf<{
 });
 
 export function getApiBaseUrl(): string {
-  // ENV-Override gewinnt — fuer Staging/Tests ohne Config-Edit.
+  // ENV-Override gewinnt — für Staging/Tests ohne Config-Edit.
   return process.env.TECHLOGIA_API ?? config.get("apiBaseUrl");
 }

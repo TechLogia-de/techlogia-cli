@@ -18,8 +18,8 @@ import { studentCommand } from "./commands/student";
 import { accountCommand } from "./commands/account";
 
 // update-notifier checkt async in einem Background-Prozess ob eine neuere
-// npm-Version verfuegbar ist. Cache hat 1 Tag — kein Performance-Issue.
-// Schmaler Lifetime-Patch: nicht in CI ausfuehren wo TTY fehlt, sonst
+// npm-Version verfügbar ist. Cache hat 1 Tag — kein Performance-Issue.
+// Schmaler Lifetime-Patch: nicht in CI ausführen wo TTY fehlt, sonst
 // schreibt notify() in stderr und verwirrt Pipes.
 function maybeNotifyUpdate(): void {
   try {
@@ -57,11 +57,11 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
     console.log(ui.dim(`  ${persona.description}`));
   } else {
     console.log(ui.yellow("Nicht angemeldet.") + " Login mit: " + ui.cyan("techlogia login"));
-    console.log(ui.dim(`  Oeffentliche Befehle sind ohne Login verfuegbar.`));
+    console.log(ui.dim(`  Öffentliche Befehle sind ohne Login verfügbar.`));
   }
 
   console.log("");
-  console.log(ui.bold("Verfuegbare Befehle"));
+  console.log(ui.bold("Verfügbare Befehle"));
   console.log(ui.dim("─".repeat(60)));
 
   const commandsByGroup: Record<string, Array<[string, string]>> = {
@@ -69,16 +69,16 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
       ["login", "Bei Techlogia anmelden"],
       ["logout", "Lokale Sitzung beenden"],
       ["whoami", "Eingeloggte Identitaet zeigen"],
-      ["student login", "Schueler-Login per Klassen-Code"],
+      ["student login", "Schüler-Login per Klassen-Code"],
     ],
     "Allgemein": [
-      ["health", "API-Erreichbarkeit pruefen"],
+      ["health", "API-Erreichbarkeit prüfen"],
       ["status", "Lokalen Status zeigen"],
       ["blog list/read", "Blog-Beitraege lesen"],
       ["legal show <slug>", "Impressum, Datenschutz, AGB"],
     ],
     "Lab (Lernplattform)": [
-      ["lab modules", "Verfuegbare Module"],
+      ["lab modules", "Verfügbare Module"],
       ["lab lessons", "Lektionen auflisten"],
       ["lab read <slug>", "Lektion im Terminal lesen"],
       ["lab start <modul>", "VM-Session starten"],
@@ -94,8 +94,8 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
     "Klassen (Lehrer)": [
       ["class list", "Eigene Klassen"],
       ["class create", "Neue Klasse anlegen"],
-      ["class students <id>", "Schueler auflisten"],
-      ["class delete <id>", "Klasse loeschen"],
+      ["class students <id>", "Schüler auflisten"],
+      ["class delete <id>", "Klasse löschen"],
     ],
     "Schule (Schul-Admin)": [
       ["school teachers", "Lehrer der Schule"],
@@ -109,7 +109,7 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
     ],
   };
 
-  // Mappt Gruppen-Namen auf Command-Namespaces fuer den Persona-Filter
+  // Mappt Gruppen-Namen auf Command-Namespaces für den Persona-Filter
   const namespaceForGroup: Record<string, string> = {
     "Anmeldung": "login",
     "Allgemein": "health",
@@ -151,8 +151,8 @@ export async function runCli(): Promise<void> {
 
   // Nach erfolgreichem Login direkt in den Shell-Mode springen — User sieht
   // alles in einem Terminal-Flow ohne zweiten Aufruf. Wir nutzen commander's
-  // postAction-Hook, der nach action() laeuft. Inner-Check: nur wenn ein
-  // Token tatsaechlich gespeichert wurde (sonst war Login fehlgeschlagen)
+  // postAction-Hook, der nach action() läuft. Inner-Check: nur wenn ein
+  // Token tatsächlich gespeichert wurde (sonst war Login fehlgeschlagen)
   // und wir in einer interaktiven TTY-Session sind.
   const launchShellIfLoggedIn = async (): Promise<void> => {
     if (!process.stdin.isTTY) return;

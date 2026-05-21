@@ -49,7 +49,7 @@ accountCommand
       console.log(`  Level          : ${ui.green(String(level))}`);
       console.log(`  Bis Level ${level + 1}   : ${remaining} XP fehlen`);
       console.log("");
-      console.log(ui.dim("XP gibt es fuer jede erste Task-Erfuellung (+20 XP)."));
+      console.log(ui.dim("XP gibt es für jede erste Task-Erfüllung (+20 XP)."));
     } catch (err) {
       printError(err);
     }

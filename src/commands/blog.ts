@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { marked } from "marked";
-// @ts-expect-error - marked-terminal hat keine eigenen TS-Types fuer v7
+// @ts-expect-error - marked-terminal hat keine eigenen TS-Types für v7
 import { markedTerminal } from "marked-terminal";
 import { apiAnon } from "../api/client";
 import { BlogPost, pickLocaleText } from "../api/types";
@@ -15,9 +15,9 @@ function blogTitle(p: BlogPost): string {
 
 function blogBody(p: BlogPost): string {
   // Backend liefert content_de/content_en als HTML. marked rendert HTML
-  // nicht parse-bar zurueck nach Markdown — wir reichen es trotzdem an
+  // nicht parse-bar zurück nach Markdown — wir reichen es trotzdem an
   // marked weil das Terminal-Renderer die <h*>, <pre>, <code>-Tags
-  // erkennt und passend einfaerbt. Plain-Text-Fallback fuer Excerpts.
+  // erkennt und passend einfaerbt. Plain-Text-Fallback für Excerpts.
   return (
     pickLocaleText(p as unknown as Record<string, unknown>, "content", config.get("locale")) ??
     pickLocaleText(p as unknown as Record<string, unknown>, "excerpt", config.get("locale")) ??

@@ -151,7 +151,7 @@ export interface CostEstimate {
 
 // Backend liefert Blog/Legal-Texte i18n-getrennt: title_de/title_en,
 // content_de/content_en. Wir tolerieren zusaetzlich ein single "title"
-// und "content_html/content_markdown" fuer Forward-Compat falls das
+// und "content_html/content_markdown" für Forward-Compat falls das
 // Schema sich vereinheitlicht.
 export interface BlogPost {
   id?: number;
@@ -184,7 +184,7 @@ export interface LegalDocument {
   updated_at?: string;
 }
 
-// Helper-Typ-Guard fuer i18n-Felder
+// Helper-Typ-Guard für i18n-Felder
 export function pickLocaleText(
   obj: Record<string, unknown>,
   field: string,

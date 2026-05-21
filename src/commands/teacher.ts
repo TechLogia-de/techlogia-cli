@@ -29,7 +29,7 @@ classCommand
       for (const c of classes) {
         console.log(`${ui.cyan("●")} #${c.id} — ${ui.bold(c.name)}`);
         if (c.class_code) console.log(`  Code       : ${ui.yellow(c.class_code)}`);
-        if (c.student_count != null) console.log(`  Schueler   : ${c.student_count}`);
+        if (c.student_count != null) console.log(`  Schüler   : ${c.student_count}`);
         if (c.created_at) console.log(`  Erstellt am: ${formatDate(c.created_at)}`);
         console.log("");
       }
@@ -61,7 +61,7 @@ classCommand
       spinner.stop();
       ui.success(`Klasse "${resp.data.name}" erstellt (#${resp.data.id}).`);
       if (resp.data.class_code) {
-        console.log(`  Code fuer Schueler-Login: ${ui.bold.call(ui, resp.data.class_code)}`);
+        console.log(`  Code für Schüler-Login: ${ui.bold.call(ui, resp.data.class_code)}`);
       }
     } catch (err) {
       printError(err);
@@ -70,7 +70,7 @@ classCommand
 
 classCommand
   .command("students <class_id>")
-  .description("Schueler einer Klasse auflisten")
+  .description("Schüler einer Klasse auflisten")
   .action(async (classId: string) => {
     try {
       const resp = await api.get<Array<{ id: number; student_login_name?: string; display_name?: string }>>(
@@ -78,11 +78,11 @@ classCommand
       );
       const students = resp.data ?? [];
       if (students.length === 0) {
-        ui.info("Keine Schueler in dieser Klasse.");
+        ui.info("Keine Schüler in dieser Klasse.");
         return;
       }
       console.log("");
-      console.log(ui.bold(`${students.length} Schueler in Klasse #${classId}`));
+      console.log(ui.bold(`${students.length} Schüler in Klasse #${classId}`));
       console.log(ui.dim("─".repeat(60)));
       for (const s of students) {
         console.log(
@@ -97,7 +97,7 @@ classCommand
 
 classCommand
   .command("quota <class_id>")
-  .description("Tageslimit fuer Sessions einer Klasse setzen (1-10)")
+  .description("Tageslimit für Sessions einer Klasse setzen (1-10)")
   .requiredOption("--max <n>", "Sessions pro Tag (1-10)")
   .action(async (classId: string, opts: { max: string }) => {
     try {
@@ -111,7 +111,7 @@ classCommand
         { max_sessions_per_day: max },
       );
       ui.success(
-        `Quota fuer Klasse #${resp.data.class_id} gesetzt: ${resp.data.max_sessions_per_day} Sessions/Tag.`,
+        `Quota für Klasse #${resp.data.class_id} gesetzt: ${resp.data.max_sessions_per_day} Sessions/Tag.`,
       );
     } catch (err) {
       printError(err);
@@ -120,19 +120,19 @@ classCommand
 
 classCommand
   .command("delete <class_id>")
-  .description("Klasse loeschen")
+  .description("Klasse löschen")
   .action(async (classId: string) => {
     try {
       const { ok } = await prompts({
         type: "confirm",
         name: "ok",
-        message: `Klasse #${classId} wirklich loeschen? Alle Schueler-Konten gehen verloren.`,
+        message: `Klasse #${classId} wirklich löschen? Alle Schüler-Konten gehen verloren.`,
         initial: false,
       });
       if (!ok) return;
 
       await api.delete(`/api/teacher/classes/${classId}`);
-      ui.success(`Klasse #${classId} geloescht.`);
+      ui.success(`Klasse #${classId} gelöscht.`);
     } catch (err) {
       printError(err);
     }

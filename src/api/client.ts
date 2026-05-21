@@ -15,7 +15,7 @@ const PLATFORM = `${process.platform}-${process.arch}`;
 // User-Agent identifiziert die CLI eindeutig — analog zur Flutter-App
 // (CLAUDE.md "Mobile-App-Kopplung"). Wir luegen NICHT als "TechlogiaApp/",
 // weil das Backend ggf. App-spezifische Logik (Force-Update-Header,
-// Mobile-Block-Bypass) triggert die fuer CLI nicht gilt.
+// Mobile-Block-Bypass) triggert die für CLI nicht gilt.
 export const USER_AGENT = `TechlogiaCLI/${CLI_VERSION} (${PLATFORM}; node-${process.version})`;
 
 interface ApiClientOptions {
@@ -44,7 +44,7 @@ async function refreshAccessToken(): Promise<string | null> {
       return access_token;
     } catch {
       // Refresh-Token abgelaufen oder revoked — User muss erneut login'en.
-      // Wir loeschen die Tokens damit der naechste Aufruf nicht in einem
+      // Wir löschen die Tokens damit der nächste Aufruf nicht in einem
       // 401-Refresh-401-Loop haengt.
       await clearTokens();
       return null;
@@ -104,7 +104,7 @@ export function createClient(opts: ApiClientOptions = {}): AxiosInstance {
   return instance;
 }
 
-// Convenience-Default fuer simple calls — getrennte Instance damit der
+// Convenience-Default für simple calls — getrennte Instance damit der
 // 401-Refresh-Interceptor pro Aufruf einmal sauber arbeitet.
 export const api = createClient();
 export const apiAnon = createClient({ auth: false });

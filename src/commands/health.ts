@@ -8,7 +8,7 @@ import { getPersonaForUser } from "../personas";
 import { printError, ui } from "../ui";
 
 export const healthCommand = new Command("health")
-  .description("Pruefen ob die Techlogia-API erreichbar ist")
+  .description("Prüfen ob die Techlogia-API erreichbar ist")
   .action(async () => {
     try {
       const t0 = Date.now();

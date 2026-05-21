@@ -5,7 +5,7 @@ import { printError, ui } from "../ui";
 
 // Admin-Subcommands sind bewusst MINIMAL — der volle Admin-Workflow lebt
 // im Web-Panel (90% der Verwaltung). Die CLI gibt nur die Top-Operations:
-// users-list, dashboard, lab-stats — fuer schnelle Health-Checks von der
+// users-list, dashboard, lab-stats — für schnelle Health-Checks von der
 // Konsole ohne Browser-Login.
 
 export const adminCommand = new Command("admin").description(

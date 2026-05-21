@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-// JWT-Storage mit OS-Keychain (keytar) als Primary, File-Fallback fuer
+// JWT-Storage mit OS-Keychain (keytar) als Primary, File-Fallback für
 // Systeme ohne libsecret (Linux-Server ohne GUI, Container, CI).
 //
 // WARUM Fallback: keytar ist eine native Dep — required() crasht auf
@@ -50,7 +50,7 @@ function readFallback(): TokenFile {
 function writeFallback(data: TokenFile): void {
   // chmod 700 auf Dir + 600 auf File — Tokens nie world-readable lassen.
   // Wenn ein anderer User auf der Maschine sitzt, soll er sie nicht
-  // einfach via ls -la /Users/X/.techlogia/ einsehen koennen.
+  // einfach via ls -la /Users/X/.techlogia/ einsehen können.
   if (!fs.existsSync(FALLBACK_DIR)) {
     fs.mkdirSync(FALLBACK_DIR, { recursive: true, mode: 0o700 });
   }
@@ -94,7 +94,7 @@ export async function clearTokens(): Promise<void> {
     if (fs.existsSync(FALLBACK_FILE)) fs.unlinkSync(FALLBACK_FILE);
   } catch {
     // ignorieren — wenn das File nicht weg geht ist es kein Fehler den User
-    // sehen muss; die naechste login-Aktion ueberschreibt es ohnehin.
+    // sehen muss; die nächste login-Aktion überschreibt es ohnehin.
   }
 }
 

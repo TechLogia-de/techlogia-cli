@@ -2,7 +2,7 @@ import { Command } from "commander";
 import ora from "ora";
 import prompts from "prompts";
 import { marked } from "marked";
-// @ts-expect-error - marked-terminal hat keine eigenen TS-Types fuer v7
+// @ts-expect-error - marked-terminal hat keine eigenen TS-Types für v7
 import { markedTerminal } from "marked-terminal";
 import { api } from "../api/client";
 import {
@@ -34,7 +34,7 @@ function loc(): "de" | "en" {
 labCommand
   .command("modules")
   .alias("list")
-  .description("Verfuegbare Lab-Module anzeigen")
+  .description("Verfügbare Lab-Module anzeigen")
   .action(async () => {
     const spinner = ora("Lade Module...").start();
     try {
@@ -49,13 +49,13 @@ labCommand
       if (modules.length === 0) {
         ui.info("Keine Module sichtbar.");
         ui.info(
-          "Als Schueler musst du warten, bis dein Lehrer Module fuer deine Klasse freischaltet.",
+          "Als Schüler musst du warten, bis dein Lehrer Module für deine Klasse freischaltet.",
         );
         return;
       }
 
       console.log("");
-      console.log(ui.bold(`${modules.length} Module verfuegbar`));
+      console.log(ui.bold(`${modules.length} Module verfügbar`));
       console.log(ui.dim("─".repeat(60)));
       for (const m of modules) {
         const title = resolveI18n(m.title, loc());
@@ -205,8 +205,8 @@ labCommand
 
 labCommand
   .command("start <module_slug>")
-  .description("Eine neue Lab-Session (VM) fuer ein Modul starten")
-  .option("-y, --yes", "Cost-Banner ueberspringen", false)
+  .description("Eine neue Lab-Session (VM) für ein Modul starten")
+  .option("-y, --yes", "Cost-Banner überspringen", false)
   .action(async (moduleSlug: string, opts: { yes: boolean }) => {
     try {
       if (!opts.yes) {
@@ -239,7 +239,7 @@ labCommand
         }
       }
 
-      const spinner = ora(`Starte VM fuer ${moduleSlug}...`).start();
+      const spinner = ora(`Starte VM für ${moduleSlug}...`).start();
       const resp = await api.post<LabSession>("/api/lab/sessions", {
         module_slug: moduleSlug,
       });
@@ -257,7 +257,7 @@ labCommand
       if (s.vm_user) console.log(`  SSH-User  : ${ui.cyan(s.vm_user)}`);
       if (s.cost_per_hour_eur != null) console.log(`  Kosten/h  : ${s.cost_per_hour_eur.toFixed(2)} EUR`);
       const exp = sessionExpiry(s);
-      if (exp) console.log(`  Laeuft ab : ${formatDate(exp)}`);
+      if (exp) console.log(`  Läuft ab : ${formatDate(exp)}`);
       if (s.terminal_url) {
         console.log("");
         console.log(`  Terminal im Browser: ${ui.cyan(s.terminal_url)}`);
@@ -329,14 +329,14 @@ labCommand
 labCommand
   .command("stop [session_id]")
   .description("Eine Lab-Session vorzeitig beenden (VM zerstoeren)")
-  .option("-y, --yes", "Confirm-Prompt ueberspringen", false)
+  .option("-y, --yes", "Confirm-Prompt überspringen", false)
   .option("--last", "Aktuell aktive Session beenden (keine ID noetig)", false)
   .action(async (sessionIdArg: string | undefined, opts: { yes: boolean; last: boolean }) => {
     try {
       let targetId = sessionIdArg;
 
       if (opts.last || !targetId) {
-        // Aktive Session ueber /active-Endpoint ermitteln — User muss
+        // Aktive Session über /active-Endpoint ermitteln — User muss
         // sich die UUID nicht aus der vorigen Ausgabe kopieren.
         const resp = await api.get<LabSession | null>("/api/lab/sessions/active");
         if (!resp.data) {
@@ -361,7 +361,7 @@ labCommand
       }
 
       const spinner = ora("Beende Session...").start();
-      // Backend nutzt DELETE /api/lab/sessions/{id} fuer Terminate
+      // Backend nutzt DELETE /api/lab/sessions/{id} für Terminate
       // (REST-konform), nicht POST + /terminate.
       await api.delete(`/api/lab/sessions/${targetId}`);
       spinner.stop();

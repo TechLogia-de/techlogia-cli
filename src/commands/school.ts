@@ -41,7 +41,7 @@ schoolCommand
 
 schoolCommand
   .command("create-teacher")
-  .description("Neuen Lehrer fuer die Schule anlegen")
+  .description("Neuen Lehrer für die Schule anlegen")
   .action(async () => {
     try {
       const responses = await prompts([
@@ -49,7 +49,7 @@ schoolCommand
           type: "text",
           name: "email",
           message: "Lehrer-Email",
-          validate: (v: string) => (v.includes("@") ? true : "Bitte gueltige Email"),
+          validate: (v: string) => (v.includes("@") ? true : "Bitte gültige Email"),
         },
         {
           type: "text",
@@ -105,7 +105,7 @@ schoolCommand
       console.log(ui.dim("─".repeat(60)));
       for (const c of classes) {
         console.log(`  #${c.id.toString().padEnd(5)} ${ui.bold(c.name)} — ${ui.yellow(c.class_code ?? "—")}`);
-        if (c.student_count != null) console.log(`         ${ui.dim(`${c.student_count} Schueler`)}`);
+        if (c.student_count != null) console.log(`         ${ui.dim(`${c.student_count} Schüler`)}`);
       }
       console.log("");
     } catch (err) {

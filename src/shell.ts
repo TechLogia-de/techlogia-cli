@@ -120,7 +120,7 @@ async function handleStudentLogin(ctx: ShellContext): Promise<void> {
     ctx.refreshPrompt();
     ui.success(`Hallo ${answers.name}!`);
   } catch {
-    ui.error("Schueler-Login fehlgeschlagen — Code oder Name pruefen.");
+    ui.error("Schüler-Login fehlgeschlagen — Code oder Name prüfen.");
   }
 }
 
@@ -186,7 +186,7 @@ async function runOnce(rawLine: string, ctx: ShellContext): Promise<{ exit: bool
       await handleLogout(ctx);
       return { exit: false };
     case "student": {
-      // `student login` als Built-in — Schueler-Klassen-Code-Flow
+      // `student login` als Built-in — Schüler-Klassen-Code-Flow
       const rest = line.split(/\s+/).slice(1)[0]?.toLowerCase();
       if (rest === "login") {
         await handleStudentLogin(ctx);
@@ -216,7 +216,7 @@ async function runOnce(rawLine: string, ctx: ShellContext): Promise<{ exit: bool
     return { exit: false };
   }
 
-  // Alles weitere via commander, mit shell-quote fuer korrekte Args.
+  // Alles weitere via commander, mit shell-quote für korrekte Args.
   const tokens = shellParse(line).filter((t): t is string => typeof t === "string");
   if (tokens.length === 0) return { exit: false };
 
@@ -234,7 +234,7 @@ async function runOnce(rawLine: string, ctx: ShellContext): Promise<{ exit: bool
     if (e?.code === "commander.help" || e?.code === "commander.version" || e?.exitCode === 0) {
       // ok — Hilfe wurde gerendert
     } else if (e?.code === "commander.unknownCommand") {
-      ui.error(`Unbekannter Befehl: ${tokens[0]} — tipp ` + ui.cyan("/help") + ui.red(" fuer Liste."));
+      ui.error(`Unbekannter Befehl: ${tokens[0]} — tipp ` + ui.cyan("/help") + ui.red(" für Liste."));
     } else if (e?.message) {
       ui.error(e.message);
     }
@@ -382,7 +382,7 @@ function renderGuestWelcome(): void {
   console.log("");
   console.log("  " + ui.yellow("Nicht eingeloggt.") + " Tipp:");
   console.log("    " + ui.cyan("/login") + ui.dim("           Email/Passwort"));
-  console.log("    " + ui.cyan("/student login") + ui.dim("   Klassen-Code (Schueler)"));
+  console.log("    " + ui.cyan("/student login") + ui.dim("   Klassen-Code (Schüler)"));
   console.log("    " + ui.cyan("/help") + ui.dim("            sichtbare Befehle"));
   console.log("    " + ui.cyan("/exit") + ui.dim("            Shell verlassen"));
   console.log("");

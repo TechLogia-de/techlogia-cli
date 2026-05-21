@@ -58,7 +58,7 @@ export const validateCommand = new Command("validate")
       if (!task) {
         spinner.stop();
         ui.error(`Task "${taskSlug}" nicht in Lesson "${lessonSlug}" gefunden.`);
-        ui.info(`Verfuegbare Tasks: ${tasks.map((t) => t.slug).join(", ") || "—"}`);
+        ui.info(`Verfügbare Tasks: ${tasks.map((t) => t.slug).join(", ") || "—"}`);
         return;
       }
 
