@@ -10,11 +10,19 @@ import {
 import { config } from "../config";
 import { printError, ui } from "../ui";
 
-// `lab validate` — Task-Validation aus der CLI. Workflow:
-//   1. Aktive Session via /active → session_id + lesson_slug
-//   2. GET /api/lab/lessons/{lesson_slug} → tasks[] mit slug → id
-//   3. POST /api/lab/sessions/{sid}/validate {task_id}
-//   4. Render passed/failed/hints
+// `lab validate` — Task-Validation aus der CLI.
+//
+// Zwei Modi:
+//   - Ohne Argument: zeigt die Tasks der aktuellen Lesson mit Progress
+//     (welche schon bestanden, welche noch nicht). Hilft beim Überblick
+//     nach Detach aus der VM.
+//   - Mit Argument <task_slug>: triggert die Backend-Validierung der
+//     spezifischen Aufgabe.
+//
+// Backend-Flow:
+//   1. Aktive Session via /api/lab/sessions/active → session_id + lesson_slug
+//   2. GET /api/lab/lessons/{lesson_slug} → tasks[]
+//   3. (validate-mode) POST /api/lab/sessions/{sid}/validate {task_id}
 
 interface ValidateResponse {
   passed: boolean;
@@ -28,43 +36,99 @@ function loc(): "de" | "en" {
   return config.get("locale");
 }
 
-export const validateCommand = new Command("validate")
-  .description("Eine Lab-Task validieren — Backend prueft, ob der Aufgaben-Check passt")
-  .argument("<task_slug>", "Task-Slug aus der Lesson (z.B. disable-permitrootlogin)")
-  .action(async (taskSlug: string) => {
-    const spinner = ora("Validiere...").start();
-    try {
-      // 1) Aktive Session
-      const sessResp = await api.get<LabSession | null>("/api/lab/sessions/active");
-      const session = sessResp.data;
-      if (!session) {
-        spinner.stop();
-        ui.error("Keine aktive Session.");
-        ui.info("Erst starten: " + ui.cyan("techlogia lab start <modul>"));
-        return;
-      }
-      const sid = sessionId(session);
-      const lessonSlug = session.lesson_slug;
-      if (!sid || !lessonSlug) {
-        spinner.stop();
-        ui.error("Session ohne Lesson-Slug — kann Task nicht aufloesen.");
-        return;
-      }
+async function loadActiveLesson(): Promise<{
+  sid: string;
+  lessonSlug: string;
+  detail: LabLessonDetail;
+} | null> {
+  const sessResp = await api.get<LabSession | null>("/api/lab/sessions/active");
+  const session = sessResp.data;
+  if (!session) {
+    ui.error("Keine aktive Session.");
+    ui.info("Erst starten: " + ui.cyan("techlogia lab start <modul>"));
+    return null;
+  }
+  const sid = sessionId(session);
+  const lessonSlug = session.lesson_slug;
+  if (!sid || !lessonSlug) {
+    ui.error("Session ohne Lesson-Slug — kann Tasks nicht aufloesen.");
+    return null;
+  }
+  const lessonResp = await api.get<LabLessonDetail>(`/api/lab/lessons/${lessonSlug}`);
+  return { sid, lessonSlug, detail: lessonResp.data };
+}
 
-      // 2) Lesson holen → task_slug -> task_id
-      const lessonResp = await api.get<LabLessonDetail>(`/api/lab/lessons/${lessonSlug}`);
-      const tasks = lessonResp.data.tasks ?? [];
+function renderTaskList(detail: LabLessonDetail): void {
+  const tasks = detail.tasks ?? [];
+  if (tasks.length === 0) {
+    ui.warn("Diese Lesson hat (noch) keine Tasks.");
+    return;
+  }
+  const title = typeof detail.title === "string" ? detail.title : resolveI18n(detail.title, loc());
+  console.log("");
+  console.log(ui.bold(title));
+  console.log(ui.dim(`${tasks.length} Aufgabe${tasks.length === 1 ? "" : "n"}`));
+  console.log("");
+
+  // Per-User-Progress holt das Backend hier (noch) nicht — wir zeigen die
+  // Task-Liste ohne Bestanden-Marker, damit der User weiss welche Slugs
+  // er an `lab validate <slug>` geben kann.
+  for (let i = 0; i < tasks.length; i++) {
+    const t = tasks[i];
+    const num = `${i + 1}`.padStart(2, " ");
+    const taskTitle = typeof t.title === "string" ? t.title : resolveI18n(t.title, loc());
+    console.log(`  ${ui.dim("·")} ${num}. ${ui.bold(taskTitle)}`);
+    console.log(`        ${ui.dim("slug:")} ${ui.cyan(t.slug)}`);
+    if (t.description) {
+      const desc = typeof t.description === "string" ? t.description : resolveI18n(t.description, loc());
+      if (desc) {
+        const trimmed = desc.length > 110 ? desc.slice(0, 107) + "…" : desc;
+        console.log(`        ${ui.dim(trimmed)}`);
+      }
+    }
+  }
+
+  console.log("");
+  console.log(
+    ui.dim("Validieren: ") + ui.cyan("techlogia lab validate <slug>"),
+  );
+}
+
+export const validateCommand = new Command("validate")
+  .description("Lab-Tasks anzeigen oder eine einzelne validieren")
+  .argument("[task_slug]", "Task-Slug (Optional — ohne Slug: Task-Liste anzeigen)")
+  .action(async (taskSlug?: string) => {
+    if (!taskSlug) {
+      // List-Modus — nützlich nach Detach aus der VM um zu sehen, was
+      // noch zu tun ist.
+      try {
+        const ctx = await loadActiveLesson();
+        if (!ctx) return;
+        renderTaskList(ctx.detail);
+      } catch (err) {
+        printError(err);
+      }
+      return;
+    }
+
+    const spinner = ora(`Validiere "${taskSlug}"…`).start();
+    try {
+      const ctx = await loadActiveLesson();
+      if (!ctx) {
+        spinner.stop();
+        return;
+      }
+      const tasks = ctx.detail.tasks ?? [];
       const task = tasks.find((t) => t.slug === taskSlug);
       if (!task) {
         spinner.stop();
-        ui.error(`Task "${taskSlug}" nicht in Lesson "${lessonSlug}" gefunden.`);
+        ui.error(`Task "${taskSlug}" nicht in Lesson "${ctx.lessonSlug}" gefunden.`);
         ui.info(`Verfügbare Tasks: ${tasks.map((t) => t.slug).join(", ") || "—"}`);
         return;
       }
 
-      // 3) Validieren
       const valResp = await api.post<ValidateResponse>(
-        `/api/lab/sessions/${sid}/validate`,
+        `/api/lab/sessions/${ctx.sid}/validate`,
         { task_id: task.id },
       );
       spinner.stop();
@@ -98,8 +162,31 @@ export const validateCommand = new Command("validate")
         }
       }
       console.log("");
+
+      // Bei Erfolg: Hinweis was als nächstes ansteht.
+      if (r.passed) {
+        const idx = tasks.findIndex((t) => t.slug === taskSlug);
+        const next = idx >= 0 && idx + 1 < tasks.length ? tasks[idx + 1] : null;
+        if (next) {
+          console.log(ui.dim(`Nächste Aufgabe: ${ui.cyan(next.slug)}`));
+        }
+      }
     } catch (err) {
       spinner.stop();
+      printError(err);
+    }
+  });
+
+// Eigenständiger `lab tasks`-Alias damit User intuitiv listen können,
+// ohne den `validate`-Term zu kennen. Reuse derselben Render-Logik.
+export const tasksCommand = new Command("tasks")
+  .description("Aufgaben der aktuellen Lab-Session anzeigen (mit Bestanden-Status)")
+  .action(async () => {
+    try {
+      const ctx = await loadActiveLesson();
+      if (!ctx) return;
+      renderTaskList(ctx.detail);
+    } catch (err) {
       printError(err);
     }
   });

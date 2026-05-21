@@ -149,6 +149,13 @@ export function renderAttachResult(result: AttachResult): void {
     case "detach":
       console.log("");
       ui.success("Vom Terminal getrennt. VM läuft weiter.");
+      console.log("");
+      console.log(ui.dim("  Nächste Schritte:"));
+      console.log(ui.dim("    ") + ui.cyan("techlogia lab tasks") + ui.dim("           Aufgaben der aktuellen Lesson anzeigen"));
+      console.log(ui.dim("    ") + ui.cyan("techlogia lab validate <slug>") + ui.dim(" Aufgabe vom Backend prüfen lassen"));
+      console.log(ui.dim("    ") + ui.cyan("techlogia lab attach") + ui.dim("          erneut ins Terminal"));
+      console.log(ui.dim("    ") + ui.cyan("techlogia lab end") + ui.dim("             Session beenden + VM löschen"));
+      console.log("");
       break;
     case "remote_close":
       if (result.code === 1000 || result.code === 1001) {
@@ -194,6 +201,12 @@ export const attachCommand = new Command("attach")
         ui.error("Nicht angemeldet.");
         return;
       }
+      console.log("");
+      console.log(ui.dim("  ━━━ ") + ui.bold("Lab-Terminal") + ui.dim(" ━━━"));
+      console.log(ui.dim("  Detach: ") + ui.bold("Strg+P") + ui.dim(" gefolgt von ") + ui.bold("Strg+Q"));
+      console.log(ui.dim("  Die VM läuft weiter — du kannst danach Aufgaben validieren oder"));
+      console.log(ui.dim("  via ") + ui.cyan("techlogia lab attach") + ui.dim(" wieder reinspringen."));
+      console.log("");
       ui.info(`Verbinde mit ${ui.cyan(sid)}...`);
       const result = await attachToSession(sid, token);
       renderAttachResult(result);

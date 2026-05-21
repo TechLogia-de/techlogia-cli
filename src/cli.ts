@@ -16,6 +16,7 @@ import { schoolCommand } from "./commands/school";
 import { adminCommand } from "./commands/admin";
 import { studentCommand } from "./commands/student";
 import { accountCommand } from "./commands/account";
+import { feedbackCommand } from "./commands/feedback";
 
 // update-notifier checkt async in einem Background-Prozess ob eine neuere
 // npm-Version verfügbar ist. Cache hat 1 Tag — kein Performance-Issue.
@@ -82,9 +83,13 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
       ["lab lessons", "Lektionen auflisten"],
       ["lab read <slug>", "Lektion im Terminal lesen"],
       ["lab start <modul>", "VM-Session starten"],
+      ["lab attach", "Ins Terminal (Detach: Strg+P Strg+Q)"],
+      ["lab tasks", "Aufgaben der aktuellen Lesson"],
+      ["lab validate <slug>", "Aufgabe vom Backend prüfen lassen"],
       ["lab status", "Aktive Sessions"],
-      ["lab stop <id>", "Session beenden"],
+      ["lab end", "Session beenden + VM löschen"],
       ["lab cost", "Kosten dieses Monats"],
+      ["feedback", "Bug, Idee oder Lob ans Team"],
     ],
     "Konto": [
       ["account profile", "Eigenes Profil"],
@@ -173,6 +178,7 @@ export async function runCli(): Promise<void> {
   program.addCommand(legalCommand);
   program.addCommand(labCommand);
   program.addCommand(accountCommand);
+  program.addCommand(feedbackCommand);
   program.addCommand(classCommand);
   program.addCommand(schoolCommand);
   program.addCommand(adminCommand);

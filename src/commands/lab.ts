@@ -19,13 +19,14 @@ import {
 import { config } from "../config";
 import { formatDate, formatDuration, printError, ui } from "../ui";
 import { attachCommand } from "./attach";
-import { validateCommand } from "./validate";
+import { tasksCommand, validateCommand } from "./validate";
 
 marked.use(markedTerminal() as never);
 
 export const labCommand = new Command("lab").description("Lernlabor — Module, Lektionen und VM-Sessions");
 labCommand.addCommand(attachCommand);
 labCommand.addCommand(validateCommand);
+labCommand.addCommand(tasksCommand);
 
 function loc(): "de" | "en" {
   return config.get("locale");
