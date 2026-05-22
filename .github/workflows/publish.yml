@@ -1,0 +1,67 @@
+name: Publish to npm
+
+# Trigger nur per tag (v0.x.x) — verhindert versehentlichen publish bei
+# jedem main-Commit. Manuell triggerbar via workflow_dispatch.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+# Provenance (SLSA Build Level 2) braucht id-token: write damit der
+# Sigstore-Workflow eine OIDC-Identitaet aus GitHub Actions zieht und
+# die Build-Attestation signiert. Ohne diese Permission scheitert
+# `npm publish --provenance` mit "OIDC not available".
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+          # always-auth ist Pflicht wenn NPM_TOKEN als secret kommt
+          always-auth: true
+
+      # npm ci statt npm install — verifiziert package-lock.json gegen
+      # registry-Integrity-Hashes. --ignore-scripts blockt malicious
+      # postinstall-Hooks aus transitive Deps (npm Supply-Chain-Best-
+      # Practice 2026).
+      - name: Install dependencies (locked + no scripts)
+        run: npm ci --ignore-scripts
+
+      # Audit-Signatures: prueft dass alle installierten Packages eine
+      # gueltige Sigstore-Signatur haben. Schlaegt fehl wenn ein Package
+      # ohne Provenance / mit gefaelschter Signature im Dep-Tree ist.
+      # WARN-LEVEL: einige Deps haben noch keine Provenance, daher
+      # continue-on-error. Sobald alle Deps Provenance haben, hochstufen.
+      - name: Verify dependency signatures
+        run: npm audit signatures
+        continue-on-error: true
+
+      - name: Typecheck
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # Provenance-Publish: signiert das Tarball mit Sigstore + erzeugt
+      # SLSA-Attestation die in die npm-Registry geschrieben wird.
+      # Konsumenten koennen via `npm view techlogia provenance` checken
+      # wo das Package gebaut wurde und ob die Signatur gueltig ist.
+      - name: Publish to npm with provenance
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

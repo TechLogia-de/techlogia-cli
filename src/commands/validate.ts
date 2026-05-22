@@ -8,7 +8,7 @@ import {
   sessionId,
 } from "../api/types";
 import { config } from "../config";
-import { printError, ui } from "../ui";
+import { printError, safe, ui } from "../ui";
 
 // `lab validate` — Task-Validation aus der CLI.
 //
@@ -140,7 +140,9 @@ export const validateCommand = new Command("validate")
       } else {
         ui.error(`Task "${resolveI18n(task.title, loc())}" nicht bestanden.`);
       }
-      if (r.message) console.log(`  ${r.message}`);
+      // ANSI-Schutz: alle Backend-Strings (r.message, d.check, d.hint,
+      // d.output) durch safe() — siehe ui.ts safe() Doc-Block.
+      if (r.message) console.log(`  ${safe(r.message)}`);
       if (r.xp_awarded) console.log(`  ${ui.cyan(`+${r.xp_awarded} XP`)}`);
       if (r.lynis_diff && r.lynis_diff.delta != null) {
         const sign = r.lynis_diff.delta >= 0 ? "+" : "";
@@ -153,10 +155,14 @@ export const validateCommand = new Command("validate")
         console.log(ui.bold("Checks"));
         for (const d of r.details) {
           const mark = d.passed ? ui.green("✓") : ui.red("✗");
-          console.log(`  ${mark} ${d.check ?? ""}`);
-          if (d.hint) console.log(`    ${ui.dim("Hint: " + d.hint)}`);
+          console.log(`  ${mark} ${safe(d.check ?? "")}`);
+          if (d.hint) console.log(`    ${ui.dim("Hint: " + safe(d.hint))}`);
           if (d.output && !d.passed) {
-            const trimmed = d.output.length > 200 ? d.output.slice(0, 200) + "…" : d.output;
+            // safe() vor slice damit ANSI-Sequenzen sauber entfernt sind
+            // bevor wir auf 200 Zeichen kuerzen (sonst koennte ein halber
+            // Escape-Code uebrigbleiben).
+            const cleaned = safe(d.output);
+            const trimmed = cleaned.length > 200 ? cleaned.slice(0, 200) + "…" : cleaned;
             console.log(`    ${ui.dim(trimmed)}`);
           }
         }

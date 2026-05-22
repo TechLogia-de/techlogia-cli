@@ -17,7 +17,7 @@ import {
   sessionIp,
 } from "../api/types";
 import { config } from "../config";
-import { formatDate, formatDuration, printError, ui } from "../ui";
+import { formatDate, formatDuration, printError, safe, ui } from "../ui";
 import { attachCommand } from "./attach";
 import { tasksCommand, validateCommand } from "./validate";
 
@@ -122,10 +122,12 @@ labCommand
               : "";
         const time = l.estimated_minutes ? ui.dim(`· ${formatDuration(l.estimated_minutes)}`) : "";
         const tasks = l.task_count != null ? ui.dim(`· ${l.task_count} Tasks`) : "";
-        console.log(`  ${order}${moduleTag}${ui.bold(resolveI18n(l.title, loc()))} ${time}${tasks}`);
-        console.log(`  ${ui.dim(l.slug)}`);
+        // ANSI-Schutz: alle Backend-Strings durch safe(). Resolved-i18n
+        // ist auch Server-Content (Lehrer/Admin koennte boese Titel setzen).
+        console.log(`  ${order}${moduleTag}${ui.bold(safe(resolveI18n(l.title, loc())))} ${time}${tasks}`);
+        console.log(`  ${ui.dim(safe(l.slug))}`);
         if (l.intro_preview) {
-          const preview = resolveI18n(l.intro_preview, loc()).replace(/\n/g, " ");
+          const preview = safe(resolveI18n(l.intro_preview, loc())).replace(/\n/g, " ");
           if (preview) console.log(`  ${ui.dim(preview.slice(0, 100))}`);
         }
       }
@@ -148,20 +150,23 @@ labCommand
       const lesson = resp.data;
 
       console.log("");
-      console.log(ui.bold(resolveI18n(lesson.title, loc())));
+      console.log(ui.bold(safe(resolveI18n(lesson.title, loc()))));
       if (lesson.module_title) {
-        console.log(ui.dim(`Modul: ${resolveI18n(lesson.module_title, loc())}`));
+        console.log(ui.dim(`Modul: ${safe(resolveI18n(lesson.module_title, loc()))}`));
       } else if (lesson.module_slug) {
-        console.log(ui.dim(`Modul: ${lesson.module_slug}`));
+        console.log(ui.dim(`Modul: ${safe(lesson.module_slug)}`));
       }
       console.log(ui.dim("─".repeat(60)));
       console.log("");
 
       // Backend liefert den Lektions-Text als intro_md (i18n-Object).
       // content_markdown / content sind Fallbacks falls das Schema sich aendert.
+      // ANSI-Schutz: marked-Output post-render durch safe() — Markdown
+      // erlaubt zwar inline-HTML nicht (Default), aber ein Lehrer koennte
+      // theoretisch ANSI-Sequenzen im rohen Text setzen die marked durchreicht.
       const md = resolveI18n(lesson.intro_md ?? lesson.content_markdown ?? lesson.content, loc());
       if (md) {
-        console.log(await marked.parse(md));
+        console.log(safe(await marked.parse(safe(md))));
       } else if (lesson.blocks && lesson.blocks.length > 0) {
         for (const block of lesson.blocks) {
           const content =
@@ -169,19 +174,19 @@ labCommand
               ? block.content
               : resolveI18n(block.content, loc());
           if (block.type === "markdown" && content) {
-            console.log(await marked.parse(content));
+            console.log(safe(await marked.parse(safe(content))));
           } else if (block.type === "code" && content) {
             console.log(ui.dim("```"));
-            console.log(ui.green(content));
+            console.log(ui.green(safe(content)));
             console.log(ui.dim("```"));
           } else if (content) {
-            console.log(content);
+            console.log(safe(content));
           } else {
-            console.log(ui.dim(`[Block: ${block.type}]`));
+            console.log(ui.dim(`[Block: ${safe(block.type)}]`));
           }
         }
       } else if (lesson.intro_preview) {
-        console.log(resolveI18n(lesson.intro_preview, loc()));
+        console.log(safe(resolveI18n(lesson.intro_preview, loc())));
       } else {
         ui.info("Keine Inhalte vorhanden.");
       }

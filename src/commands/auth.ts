@@ -9,7 +9,7 @@ import { clearTokens, saveTokens, storageBackend } from "../api/storage";
 import { AuthMeResponse, TokenResponse } from "../api/types";
 import { config, getApiBaseUrl } from "../config";
 import { getPersonaForUser } from "../personas";
-import { printError, ui } from "../ui";
+import { printError, safe, ui } from "../ui";
 
 // Login-Flow: drei Antwortzweige
 // 1) 200 + {access_token,...}     → eingeloggt
@@ -72,6 +72,20 @@ async function performLogin(email: string, password: string): Promise<TokenRespo
 }
 
 function openBrowser(url: string): void {
+  // SECURITY (P7, 2026-05-23): URL kommt ueber getApiBaseUrl() aus der
+  // TECHLOGIA_API env-var. Validieren bevor wir an spawn() weiterreichen:
+  //   - Muss gueltige URL sein (URL-Constructor wirft sonst)
+  //   - Schema nur http/https (kein file://, javascript:, data:)
+  //   - Hostname auf bekannte Werte beschraenken — Ausnahme wenn explizit
+  //     ein eigener TECHLOGIA_API gesetzt ist (Dev-Workflow).
+  const u = new URL(url); // wirft bei ungueltiger URL
+  if (u.protocol !== "http:" && u.protocol !== "https:") {
+    throw new Error(`openBrowser: unzulaessiges Schema ${u.protocol}`);
+  }
+  const allowedHosts = new Set(["techlogia.de", "127.0.0.1", "localhost"]);
+  if (!allowedHosts.has(u.hostname) && !process.env.TECHLOGIA_API) {
+    throw new Error(`openBrowser: nicht erlaubter Host ${u.hostname}`);
+  }
   const cmd =
     process.platform === "darwin"
       ? "open"
@@ -117,36 +131,101 @@ export async function webLogin(): Promise<WebLoginResult> {
       resolve(r);
     };
 
+    // PKCE S256 (P5, 2026-05-23, RFC 7636) — schuetzt Authorization-Code
+    // vor Interception/Replay (geleakte Logs, Insider mit DB-Zugriff). state
+    // allein deckt nur CSRF ab, nicht Code-Theft. Verifier 43-128 Zeichen
+    // base64url, Challenge ist SHA-256 base64url. Wird mit /api/auth/cli/init
+    // mitgeschickt (gespeichert beim Backend gegen den Authorization-Code)
+    // und mit /api/auth/cli/exchange verifiziert.
+    const codeVerifier = crypto.randomBytes(32).toString("base64url");
+    const codeChallenge = crypto
+      .createHash("sha256")
+      .update(codeVerifier)
+      .digest("base64url");
+
+    // Defensive security headers fuer die HTML-Response (P2).
+    // CSP default-src 'none' verhindert dass eine kompromittierte Page
+    // irgendwelche Subresources nachzieht. Stylesheet via 'unsafe-inline'
+    // weil der CSS-Block direkt im HTML steht (kein externer Loader).
+    const secureHtmlHeaders = {
+      "Content-Type": "text/html; charset=utf-8",
+      "Content-Security-Policy":
+        "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; frame-ancestors 'none'",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
+      "Cache-Control": "no-store",
+    } as const;
+
     const server = http.createServer(async (req, res) => {
+      // SECURITY-HÄRTUNG (P2, 2026-05-23, ab hier vier neue Checks):
+      // a) Nur GET — Browser-Redirect kommt immer GET.
+      if (req.method !== "GET") {
+        res.writeHead(405, { Allow: "GET", "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
+      // b) DNS-Rebinding-Schutz: Host-Header MUSS 127.0.0.1/localhost sein.
+      //    Verhindert dass eine bose Webseite via dns-rebinding den Browser
+      //    dazu bringt, GET 127.0.0.1:PORT?code=... mit anderem Host-Header
+      //    abzusenden und so den OAuth-Code zu klauen.
+      const hostHeader = req.headers.host ?? "";
+      if (
+        !hostHeader.startsWith("127.0.0.1:") &&
+        !hostHeader.startsWith("localhost:")
+      ) {
+        res.writeHead(421, { "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
+      // c) Nur lokale Verbindungen — paranoid weil server.listen("127.0.0.1")
+      //    bereits bindet, aber Node liefert manchmal ::ffff:127.0.0.1.
+      const remote = req.socket.remoteAddress;
+      if (
+        remote !== "127.0.0.1" &&
+        remote !== "::ffff:127.0.0.1" &&
+        remote !== "::1"
+      ) {
+        res.writeHead(403, { "Cache-Control": "no-store" });
+        res.end();
+        return;
+      }
+
       const url = new URL(req.url ?? "/", "http://127.0.0.1");
-      if (url.pathname !== "/" && url.pathname !== "/callback") {
-        res.writeHead(404);
-        res.end("not found");
+      // d) Nur /callback — alles andere ist Probe-Traffic.
+      if (url.pathname !== "/callback") {
+        res.writeHead(404, { "Cache-Control": "no-store" });
+        res.end();
         return;
       }
       const code = url.searchParams.get("code");
       const stateReturned = url.searchParams.get("state");
       if (!code || !stateReturned) {
-        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
+        res.writeHead(400, secureHtmlHeaders);
         res.end(
-          "<h1>Fehler</h1><p>Code oder State fehlt. Bitte Login erneut starten.</p>",
+          "<!doctype html><meta charset='utf-8'><title>Fehler</title><h1>Fehler</h1><p>Code oder State fehlt. Bitte Login erneut starten.</p>",
         );
         finish({ ok: false, error: "Code oder State fehlt." });
         return;
       }
-      if (stateReturned !== state) {
-        res.writeHead(400, { "Content-Type": "text/html; charset=utf-8" });
-        res.end("<h1>Fehler</h1><p>State-Check fehlgeschlagen.</p>");
+      // SECURITY (P2): timing-safe Vergleich statt === — verhindert
+      // Timing-Side-Channel (Angreifer koennte State per Charakter erraten).
+      const a = Buffer.from(stateReturned);
+      const b = Buffer.from(state);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        res.writeHead(400, secureHtmlHeaders);
+        res.end(
+          "<!doctype html><meta charset='utf-8'><title>Fehler</title><h1>Fehler</h1><p>State-Check fehlgeschlagen.</p>",
+        );
         finish({ ok: false, error: "State-Mismatch (CSRF)." });
         return;
       }
-      // Code gegen Tokens tauschen
+      // Code gegen Tokens tauschen — mit code_verifier fuer PKCE.
       try {
         const exchange = await apiAnon.post<{ access_token: string; refresh_token: string }>(
           "/api/auth/cli/exchange",
-          { code, state },
+          { code, state, code_verifier: codeVerifier },
         );
-        res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+        res.writeHead(200, secureHtmlHeaders);
         res.end(
           `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Techlogia CLI</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;max-width:480px;margin:80px auto;text-align:center;color:#0F0F0E}
@@ -160,10 +239,19 @@ h1{color:#10B981;margin-bottom:12px}p{color:#6B7280;line-height:1.6}</style></he
         });
       } catch (err) {
         const e = err as { response?: { data?: { detail?: string } } };
-        const detail = e?.response?.data?.detail ?? "Exchange fehlgeschlagen.";
-        res.writeHead(500, { "Content-Type": "text/html; charset=utf-8" });
-        res.end(`<h1>Fehler</h1><p>${detail}</p>`);
-        finish({ ok: false, error: detail });
+        // Server-Errors duerfen nicht ungefiltert ins HTML — koennten
+        // ANSI/HTML enthalten. safe() + HTML-escape.
+        const rawDetail = e?.response?.data?.detail ?? "Exchange fehlgeschlagen.";
+        const detail = safe(rawDetail)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+        res.writeHead(500, secureHtmlHeaders);
+        res.end(
+          `<!doctype html><meta charset='utf-8'><title>Fehler</title><h1>Fehler</h1><p>${detail}</p>`,
+        );
+        finish({ ok: false, error: safe(rawDetail) });
       }
     });
 
@@ -172,13 +260,29 @@ h1{color:#10B981;margin-bottom:12px}p{color:#6B7280;line-height:1.6}</style></he
       const address = server.address();
       const port = typeof address === "object" && address ? address.port : 0;
       const cliRedirect = `http://127.0.0.1:${port}/callback`;
-      const authUrl = `${apiBase}/cli-auth?cli_state=${encodeURIComponent(state)}&cli_redirect=${encodeURIComponent(cliRedirect)}`;
+      // PKCE: code_challenge an /cli-auth weiterreichen, dort sendet der
+      // Frontend den Authorize-Init mit Challenge an /api/auth/cli/init.
+      // Backend speichert Challenge gegen den ausgegebenen Authorization-
+      // Code und vergleicht beim Exchange.
+      const authUrl =
+        `${apiBase}/cli-auth?cli_state=${encodeURIComponent(state)}` +
+        `&cli_redirect=${encodeURIComponent(cliRedirect)}` +
+        `&code_challenge=${encodeURIComponent(codeChallenge)}` +
+        `&code_challenge_method=S256`;
       console.log("");
       console.log(ui.dim("  Oeffne Browser zur Login-Seite..."));
       console.log(ui.dim("  Falls nichts passiert, kopiere diese URL:"));
       console.log("  " + ui.cyan(authUrl));
       console.log("");
-      openBrowser(authUrl);
+      try {
+        openBrowser(authUrl);
+      } catch (browserErr) {
+        // openBrowser kann jetzt werfen (URL-Validierung). Logge die
+        // Ursache aber breche Login nicht ab — User kann URL manuell oeffnen.
+        const msg = browserErr instanceof Error ? browserErr.message : String(browserErr);
+        ui.warn(`Browser-Auto-Open fehlgeschlagen: ${safe(msg)}`);
+        console.log(ui.dim("  → Bitte obige URL manuell im Browser oeffnen."));
+      }
     });
 
     server.on("error", (err) => {

@@ -5,6 +5,49 @@ import { AxiosError } from "axios";
 // CJS-Build sprengen. Falls jemand spaeter migriert: ESM-Migration ist
 // non-trivial wegen require()-Aufrufen im Code.
 
+// ─── ANSI / Terminal-Injection Schutz (P1, 2026-05-23) ────────────────────
+// Server-Daten (Lehrer-Nachrichten, Lab-Output, error.detail) duerfen
+// NIE ungefiltert ins Terminal — siehe CVE-Klasse Codex-CLI (RCE via OSC),
+// clipboard-hijack via OSC-52, prompt-injection via CSI/SGR-Sequenzen.
+//
+// Die Regex erfasst:
+//   - C0-Steuerzeichen (0x00-0x08, 0x0B-0x1F, 0x7F) AUSSER \n und \t
+//   - CSI-Sequenzen   (ESC[…[@-~])     — Cursor/Color/Mode-Manipulation
+//   - OSC-Sequenzen   (ESC]…BEL|ST)    — Clipboard, Window-Title, Hyperlink
+//   - DCS/SOS/PM/APC  (ESC[PXZ\\]_^])  — Device-Control-Strings
+//   - Stand-alone ST  (ESC\)
+//
+// EXPLIZIT erlaubt: \n (newline), \t (tab) — Layout-Whitespace.
+// EXPLIZIT NICHT erlaubt: \x1b (ESC), \x07 (BEL), alle anderen Control-Chars.
+//
+// Ausnahme: src/commands/attach.ts WS-stdout — das ist echter PTY-Passthrough
+// von einer User-eigenen VM, ANSI ist by-design. Dort NICHT safe() anwenden.
+// Reihenfolge ist wichtig (Alternation-Greedy): laengere ESC-Sequenzen
+// ZUERST, dann standalone-ESC, dann uebrige C0-Controls.
+// ESC alleine darf NICHT in der ersten Char-Class stehen, sonst frisst
+// sie ihn weg bevor die CSI/OSC-Varianten zum Zug kommen.
+const ANSI_AND_CONTROL_RE =
+  // eslint-disable-next-line no-control-regex
+  /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[PX^_][^\x1b]*\x1b\\|\x1b\\|\x1b|[\x00-\x08\x0B-\x1F\x7F]/g;
+
+/**
+ * Sanitisiert Server-Strings vor der Terminal-Ausgabe. Entfernt ANSI-
+ * Escape-Sequenzen und Control-Characters. Tab und Newline bleiben erhalten.
+ *
+ * IMMER anwenden auf: Server-Response-Strings, Backend-Error-Details,
+ * marked-Output (post-render), userinfo, OAuth-Provider-Messages, Lab-
+ * Task-Output, Hint-Texte, Lesson-Titel.
+ *
+ * NICHT anwenden auf: WS-PTY-Stream in attach.ts (das ist eigene VM).
+ */
+export function safe(input: unknown, maxLen = 4000): string {
+  if (input == null) return "";
+  const s = typeof input === "string" ? input : String(input);
+  const cleaned = s.replace(ANSI_AND_CONTROL_RE, "");
+  // Defense-in-depth gegen pathologische Megabyte-Strings vom Backend.
+  return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + "…" : cleaned;
+}
+
 export const ui = {
   success: (msg: string): void => console.log(chalk.green("✓ ") + msg),
   error: (msg: string): void => console.error(chalk.red("✗ ") + msg),
@@ -36,13 +79,15 @@ export function printError(err: unknown): void {
     // Backend liefert oft {"detail": "..."} bei 4xx — das ist die menschen-
     // lesbare Message. Wenn detail ein Objekt ist (Validation-Errors),
     // versuchen wir .message; sonst stringify.
+    // Alle Werte durch safe() — Server-Strings sind untrusted (ANSI-Schutz).
     let detail: string;
     if (typeof data?.detail === "string") {
-      detail = data.detail;
+      detail = safe(data.detail);
     } else if (data?.detail && typeof data.detail === "object") {
-      detail = (data.detail as { message?: string }).message ?? JSON.stringify(data.detail);
+      const obj = data.detail as { message?: string };
+      detail = safe(obj.message ?? JSON.stringify(obj));
     } else {
-      detail = err.message;
+      detail = safe(err.message);
     }
 
     if (status === 401) {
@@ -58,7 +103,9 @@ export function printError(err: unknown): void {
       ui.error(`Server-Fehler (${status}): ${detail}`);
       console.log(ui.dim("  → Status prüfen: ") + chalk.cyan("techlogia health"));
     } else if (err.code === "ECONNREFUSED" || err.code === "ENOTFOUND") {
-      ui.error(`API nicht erreichbar (${err.config?.baseURL ?? "?"}).`);
+      // baseURL koennte env-controlled sein (TECHLOGIA_API). Saniren um
+      // sicherzugehen dass kein Angreifer via env-injected ANSI durchkommt.
+      ui.error(`API nicht erreichbar (${safe(err.config?.baseURL ?? "?")}).`);
       console.log(ui.dim("  → Internet prüfen oder ") + chalk.cyan("TECHLOGIA_API") + ui.dim(" anpassen."));
     } else {
       ui.error(`API-Fehler ${status ?? ""}: ${detail}`);
@@ -67,11 +114,13 @@ export function printError(err: unknown): void {
   }
 
   if (err instanceof Error) {
-    ui.error(err.message);
+    // Error-Messages koennen Server-Strings enthalten (z.B. wenn upstream
+    // catch + rethrow). Defense-in-depth: safe().
+    ui.error(safe(err.message));
     return;
   }
 
-  ui.error(String(err));
+  ui.error(safe(String(err)));
 }
 
 export function formatDate(iso?: string | null): string {

@@ -69,3 +69,73 @@ Out of scope (please file with the main project / Hetzner abuse):
 Default: **90 days** from acknowledgement to public disclosure. We may
 ask for an extension if a fix is non-trivial; we will not silently sit
 on a confirmed bug.
+
+## Hardening implemented (2026-05-23, v0.5.0 senior audit)
+
+This CLI ships with defense-in-depth measures against the most common
+classes of CLI-tool vulnerabilities. If you find a gap, please report it
+to `security@techlogia.de`.
+
+- **ANSI/Terminal-Injection protection:** all strings received from the
+  Techlogia API are passed through a `safe()` sanitizer before being
+  written to the terminal. Removes C0 control characters, CSI/OSC/DCS
+  sequences. Mitigates the Codex-CLI-style RCE class (CVE-2024-9956 family),
+  OSC-52 clipboard hijack, and prompt-injection via SGR/CSI.
+  Exception: the WebSocket PTY stream in `lab attach` is a passthrough
+  from a user-owned VM and intentionally allows ANSI.
+
+- **OAuth Authorization-Code flow with PKCE (S256):** the browser-based
+  login flow uses RFC 7636 PKCE in addition to a CSRF state. Defeats
+  authorization-code interception via log leaks, browser history, or
+  insider DB access.
+
+- **Hardened loopback HTTP listener:** during `techlogia login --web`,
+  the local callback server enforces (a) `GET` only, (b) `Host: 127.0.0.1`
+  or `localhost` (DNS-rebinding protection), (c) `127.0.0.1`/`::1`
+  remote address (paranoia), (d) `/callback` path only. State is compared
+  in constant time. Responses include strict CSP, `nosniff`,
+  `Referrer-Policy: no-referrer`.
+
+- **Token encryption at rest:** when the OS keychain is unavailable
+  (Linux without libsecret, container, CI), tokens are stored
+  AES-256-GCM-encrypted with a machine-derived key (hostname + UID +
+  product string). Plain-text fallback files from prior versions are
+  migrated transparently on first read and deleted afterwards.
+
+- **WebSocket hardening (`lab attach`):** `rejectUnauthorized: true`
+  explicit (defense-in-depth in case future agent config changes that),
+  60-second idle-ping timeout, configurable detach sequence via
+  `TECHLOGIA_DETACH=^]^]` (Emacs/Tmux compatibility).
+
+- **Browser-open URL validation:** the URL passed to `open`/`xdg-open`/
+  `start` is validated (must be `http`/`https`, host on a small allowlist
+  unless `TECHLOGIA_API` is set explicitly).
+
+- **No `update-notifier`:** replaced with a 30-line `fetch()` against
+  `registry.npmjs.org/{pkg}/latest`. Removed nine transitive vulnerable
+  dependencies including `got@9` (SSRF).
+
+- **Supply-chain hardening (CI):** `npm ci --ignore-scripts` to block
+  malicious `postinstall` hooks; `npm audit signatures` to verify Sigstore
+  attestations on installed packages; `npm publish --provenance` so this
+  CLI itself ships with SLSA Build Level 2 provenance + a verifiable
+  Sigstore signature. Dependabot is restricted to direct deps,
+  major-version updates require manual review.
+
+## How to verify the publish provenance
+
+After install, you can verify this CLI's npm provenance:
+
+```bash
+npm view techlogia --json | jq '.dist'
+# Look for `provenance.predicateType` = "https://slsa.dev/provenance/v1"
+```
+
+Or via the registry API:
+
+```bash
+curl -s https://registry.npmjs.org/-/npm/v1/attestations/techlogia@<version>
+```
+
+This proves which GitHub Actions workflow built and published the
+tarball — independent of any compromise of npm publisher credentials.

@@ -1,5 +1,4 @@
 import { Command } from "commander";
-import updateNotifier from "update-notifier";
 import { CLI_VERSION, api } from "./api/client";
 import { getAccessToken } from "./api/storage";
 import { AuthMeResponse } from "./api/types";
@@ -18,18 +17,60 @@ import { studentCommand } from "./commands/student";
 import { accountCommand } from "./commands/account";
 import { feedbackCommand } from "./commands/feedback";
 
-// update-notifier checkt async in einem Background-Prozess ob eine neuere
-// npm-Version verfügbar ist. Cache hat 1 Tag — kein Performance-Issue.
-// Schmaler Lifetime-Patch: nicht in CI ausführen wo TTY fehlt, sonst
-// schreibt notify() in stderr und verwirrt Pipes.
-function maybeNotifyUpdate(): void {
+// Update-Check (P3, 2026-05-23) — selbstgeschrieben statt update-notifier.
+// Background: update-notifier@5 zog got@9 mit SSRF-Schwachstelle + 5
+// weitere transitive Vulns rein. Ein direkter fetch() gegen die npm-
+// Registry hat null Dependencies und tut dasselbe in 25 Zeilen.
+//
+// Kontrakt:
+//   - HEAD-Async, blockiert das CLI-Startup nie laenger als 3s
+//   - Nur TTY-Output (keine Pipe-Verwirrung)
+//   - Schweigt bei Network-Errors (offline ist legitimer State)
+//   - Cache via mtime auf Conf-File-Pfad — 1x pro 24h
+async function maybeNotifyUpdate(): Promise<void> {
+  if (!process.stdout.isTTY) return;
+  // Skip wenn weniger als 24h seit letztem Check.
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  const os = await import("node:os");
+  const cacheDir = path.join(os.homedir(), ".config", "techlogia-nodejs");
+  const cacheFile = path.join(cacheDir, "update-check.txt");
+  try {
+    const stat = fs.statSync(cacheFile);
+    if (Date.now() - stat.mtimeMs < 24 * 60 * 60 * 1000) return;
+  } catch {
+    // Cache-File existiert nicht — erster Check, weiter machen.
+  }
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require("../package.json") as { name: string; version: string };
-    const notifier = updateNotifier({ pkg, updateCheckInterval: 1000 * 60 * 60 * 24 });
-    if (process.stdout.isTTY) notifier.notify({ defer: false, isGlobal: true });
+    const url = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/latest`;
+    const resp = await fetch(url, {
+      signal: AbortSignal.timeout(3000),
+      headers: { Accept: "application/json" },
+    });
+    if (!resp.ok) return;
+    const data = (await resp.json()) as { version?: string };
+    const latest = data.version;
+    if (!latest || latest === pkg.version) return;
+    // Cache aktualisieren (mkdir-p + touch).
+    fs.mkdirSync(cacheDir, { recursive: true });
+    fs.writeFileSync(cacheFile, latest, { mode: 0o600 });
+    // Nur einfaches, klares Notify — kein Box-Drawing wie bei update-notifier.
+    console.error("");
+    console.error(
+      ui.dim("  Update verfuegbar: ") +
+        ui.bold(pkg.version) +
+        ui.dim(" -> ") +
+        ui.cyan(latest),
+    );
+    console.error(
+      ui.dim("  Update: ") + ui.cyan(`npm i -g ${pkg.name}`),
+    );
+    console.error("");
   } catch {
-    // ignorieren — Updates checken ist nice-to-have, nicht critical
+    // Network-Error / Timeout / JSON-Parse-Fehler — alle still schlucken.
+    // Update-Hinweis ist nice-to-have, kein Critical-Path.
   }
 }
 
@@ -144,7 +185,10 @@ function printPersonaHelp(me: AuthMeResponse | null): void {
 }
 
 export async function runCli(): Promise<void> {
-  maybeNotifyUpdate();
+  // Update-Check ist async, blockiert aber nicht — fire-and-forget.
+  // Falls Update-Hinweis spaeter als der eigentliche Command erscheint,
+  // ist das akzeptabel (Hinweis ist informativ, kein Blocker).
+  void maybeNotifyUpdate();
 
   const program = new Command();
   program

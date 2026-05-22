@@ -1,0 +1,42 @@
+# Dependabot — Supply-Chain-Härtung (P6, 2026-05-23).
+#
+# Strategie:
+#   - Nur DIREKTE Dependencies updaten (allow direct). Transitive Deps
+#     ueber lockfile-Refresh, nicht via Dependabot — sonst lawinenartige
+#     PRs bei jedem transitive-bump.
+#   - Wochentliche Cadence (Montag morgens). Patch + Minor erlaubt,
+#     Major nur via manuelles Review.
+#   - GitHub-Actions auch tracken (Action-Pinning gegen kompromittierte
+#     Action-Versionen, siehe pinact / SLSA-Empfehlung).
+
+version: 2
+updates:
+  # npm (CLI deps)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Berlin"
+    open-pull-requests-limit: 5
+    versioning-strategy: "increase-if-necessary"
+    allow:
+      - dependency-type: "direct"
+    ignore:
+      # Major-Bumps brauchen Code-Review (Breaking-Changes)
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    labels:
+      - "dependencies"
+      - "automated"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "ci"
+      - "automated"

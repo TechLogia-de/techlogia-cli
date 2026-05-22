@@ -1,6 +1,6 @@
 {
   "name": "techlogia",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Techlogia Lab — Lernplattform als CLI. Module browsen, Lektionen lesen, VM-Sessions starten, Klassen verwalten — direkt im Terminal.",
   "type": "commonjs",
   "bin": {
@@ -51,7 +51,6 @@
     "ora": "^5.4.1",
     "prompts": "^2.4.2",
     "shell-quote": "^1.8.3",
-    "update-notifier": "^5.1.0",
     "ws": "^8.20.1"
   },
   "optionalDependencies": {
@@ -61,7 +60,6 @@
     "@types/node": "^22.7.5",
     "@types/prompts": "^2.4.9",
     "@types/shell-quote": "^1.7.5",
-    "@types/update-notifier": "^5.1.0",
     "@types/ws": "^8.18.1",
     "msw": "^2.4.9",
     "tsup": "^8.3.0",
