@@ -24,11 +24,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # ACHTUNG: KEIN registry-url hier! setup-node schreibt damit eine
+      # .npmrc mit _authToken=${NODE_AUTH_TOKEN} und setzt die Variable
+      # auf einen Platzhalter ("XXXXX-..."). npm sieht den konfigurierten
+      # Token, schickt den Fake statt OIDC zu nutzen -> E404 beim PUT
+      # (Run 26998741236, 2026-06-05). Ohne registry-url erkennt npm>=11.5
+      # die GitHub-OIDC-Umgebung selbst (Trusted Publishing).
       - name: Setup Node 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          registry-url: "https://registry.npmjs.org"
 
       # Trusted Publishing (OIDC) braucht npm >= 11.5.1 — Node 22 bundelt
       # nur npm 10.x. Ohne dieses Upgrade faellt npm auf Token-Auth
