@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # ACHTUNG: KEIN registry-url hier! setup-node schreibt damit eine
       # .npmrc mit _authToken=${NODE_AUTH_TOKEN} und setzt die Variable
@@ -31,7 +31,7 @@ jobs:
       # (Run 26998741236, 2026-06-05). Ohne registry-url erkennt npm>=11.5
       # die GitHub-OIDC-Umgebung selbst (Trusted Publishing).
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
