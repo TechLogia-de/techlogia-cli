@@ -74,4 +74,4 @@ jobs:
       # das abgelaufene Secret liess jeden Publish mit E404 scheitern.
       # Provenance (SLSA Build Level 2 + Sigstore) bleibt wie gehabt.
       - name: Publish to npm with provenance
-        run: npm publish --provenance --access public --loglevel http
+        run: npm publish --provenance --access public
