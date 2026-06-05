@@ -1,73 +1,68 @@
 # Publishing auf npm
 
-## Einmaliges Setup
+**Seit 2026-06-05 läuft der Publish über npm Trusted Publishing (OIDC)
+aus GitHub Actions — es gibt KEINEN npm-Token mehr** (weder lokal noch
+als GitHub-Secret). Hintergrund: npm hat Ende 2025 alle Classic-Tokens
+revoked und Granular-Tokens auf max. 90 Tage begrenzt; der CI-Publish
+von 0.5.2 scheiterte am abgelaufenen `NPM_TOKEN` mit `E404`.
 
-### 1) Token rotieren (WICHTIG)
+## Einmaliges Setup (erledigt, hier zur Referenz)
 
-Der Token, der versehentlich im Chat gepasted wurde, muss sofort rotiert
-werden:
-- https://www.npmjs.com/settings/~/tokens
-- "Generate New Token" → Type "Automation" (für CI) oder "Publish" (für lokal)
-- Granular: Packages scope `techlogia`, write access
-- Den alten Token löschen
+Auf npmjs.com → Package `techlogia` → **Settings → Trusted Publisher**:
 
-### 2) ~/.npmrc anlegen (lokal, NIE im Repo)
+| Feld | Wert |
+|---|---|
+| Organization or user | `TechLogia-de` |
+| Repository | `techlogia-cli` |
+| Workflow filename | `publish.yml` (nur der Dateiname, kein Pfad!) |
+| Environment name | *(leer)* |
+
+Stolperfallen (kosteten 3 Fehlversuche am 2026-06-05):
+
+1. **Kein `registry-url` in `actions/setup-node`!** Damit schreibt
+   setup-node eine `.npmrc` mit `_authToken=${NODE_AUTH_TOKEN}` und
+   einem Platzhalter-Fake-Token (`XXXXX-...`) — npm bevorzugt den
+   konfigurierten Token vor OIDC und der PUT scheitert mit `E404`.
+2. **npm ≥ 11.5.1 nötig** — Node 22 bundelt npm 10.x, deshalb der
+   `npm install -g npm@latest`-Step im Workflow.
+3. `permissions: id-token: write` muss gesetzt sein (war es schon
+   für die Sigstore-Provenance).
+4. Debugging: `npm publish --loglevel http` zeigt den OIDC-Exchange
+   (`POST /-/npm/v1/oidc/token/exchange/package/techlogia`) — ein
+   `404` dort heißt: Trusted-Publisher-Config matcht die Claims nicht.
+
+## Publish-Workflow (Standard: via CI)
 
 ```bash
-# ~/.npmrc (chmod 600)
-//registry.npmjs.org/:_authToken=npm_NEUER_TOKEN_HIER
-```
-
-Oder via Login (interaktiv):
-```bash
-npm login
-```
-
-### 3) Verify
-
-```bash
-npm whoami    # sollte dein Username zeigen
-```
-
-## Publish-Workflow
-
-```bash
-# 1. Im CLI-Repo
+# 1. Im CLI-Repo: sauberer Stand
 cd "/Users/antonio/Desktop/Dev Apps/Techlogia_CLI"
+npm run lint && npm run build && npm test
 
-# 2. Sauberer Build + Tests
-npm run lint
-npm run build
-npm test
+# 2. Version bumpen (erstellt Git-Commit + Tag)
+npm version patch    # 0.x.Y → Bug-Fixes
+# oder: npm version minor   → neue Befehle
 
-# 3. Version bumpen (patch/minor/major)
-#    Erstellt einen Git-Commit + Tag.
-npm version patch    # 0.1.0 → 0.1.1
-# oder: npm version minor   → 0.2.0
-# oder: npm version major   → 1.0.0
+# 3. Push — der v*-Tag triggert .github/workflows/publish.yml,
+#    der mit OIDC + SLSA-Provenance publisht. Kein npm-Login nötig.
+git push origin main --tags
 
-# 4. Publish (prepublishOnly-Hook baut + testet nochmal)
-npm publish
-
-# 5. Verifikation
-npm view techlogia
+# 4. Verifikation
+gh run watch --repo TechLogia-de/techlogia-cli
 npm view techlogia version
+npm view techlogia dist.attestations   # SLSA-Provenance vorhanden?
 ```
 
-## Erste Veröffentlichung
-
+Manueller Re-Run (z.B. nach Workflow-Fix, Tag existiert schon):
 ```bash
-cd "/Users/antonio/Desktop/Dev Apps/Techlogia_CLI"
-npm publish
-# Beim ERSTEN publish prüft npm, ob der Name "techlogia" frei ist.
-# Status: AKTUELL FREI (geprüft 2026-05-20).
+gh workflow run publish.yml --ref main
 ```
 
-Falls der Name in der Zwischenzeit belegt ist, auf Scope umstellen:
-```bash
-# In package.json:  "name": "@techlogia/cli"
-npm publish --access public
-```
+## Lokaler Publish (Notfall-Fallback)
+
+Nur wenn GitHub Actions ausfällt: `npm login` (Browser-Flow), dann
+`npm publish --access public`. **Achtung:** lokal gibt es keine
+`--provenance` (braucht CI-OIDC) — der Sigstore-Badge fehlt dann
+für diese Version.
 
 ## Update auf installierten Maschinen
 
