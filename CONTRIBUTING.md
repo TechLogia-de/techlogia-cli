@@ -60,6 +60,31 @@ src/
 - **No emojis** in source code or commit messages. Logs and CLI output
   may use unicode glyphs where they add semantic value (status dots).
 
+## Dependency policy
+
+The package ships as a **CommonJS** bundle (`"type": "commonjs"`) and
+supports **Node ≥ 18**. That constrains which dependency majors we can
+adopt — several popular packages went ESM-only or raised their Node
+floor. Do **not** bump these beyond the listed ceiling (the build would
+break for CJS or for Node-18 users):
+
+| Package | Pinned major | Why the newer major is off-limits |
+|---|---|---|
+| `chalk` | 4.x | 5.x is ESM-only |
+| `ora` | 5.x | 6.x+ is ESM-only |
+| `conf` | 10.x | 11.x+ is ESM-only |
+| `marked` | 14.x | 15.x+ is ESM-only **and** `marked-terminal` peer-caps `marked <16` |
+| `commander` | 13.x | 14.x requires Node ≥ 20, 15.x is ESM-only |
+
+Everything else (axios, ws, shell-quote, dev-tooling) follows the
+normal rule: keep current, prefer the latest version that passes
+`npm run lint && npm run build && npm test`. Security floors
+(e.g. `axios >= 1.17`) must never be lowered — check `CHANGELOG.md`
+for the CVE that introduced a floor before touching it.
+
+Revisit this table when the Node-18 support window ends; an ESM
+migration would unlock all majors at once (tracked as a post-1.0 task).
+
 ## Commit messages
 
 ```
