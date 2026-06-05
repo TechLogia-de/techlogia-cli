@@ -31,7 +31,7 @@ jobs:
       # (Run 26998741236, 2026-06-05). Ohne registry-url erkennt npm>=11.5
       # die GitHub-OIDC-Umgebung selbst (Trusted Publishing).
       - name: Setup Node 22
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: "22"
 
