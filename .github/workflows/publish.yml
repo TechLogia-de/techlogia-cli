@@ -29,8 +29,12 @@ jobs:
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
-          # always-auth ist Pflicht wenn NPM_TOKEN als secret kommt
-          always-auth: true
+
+      # Trusted Publishing (OIDC) braucht npm >= 11.5.1 — Node 22 bundelt
+      # nur npm 10.x. Ohne dieses Upgrade faellt npm auf Token-Auth
+      # zurueck und der Publish scheitert mit E404.
+      - name: Upgrade npm for Trusted Publishing
+        run: npm install -g npm@latest && npm --version
 
       # npm ci statt npm install — verifiziert package-lock.json gegen
       # registry-Integrity-Hashes. --ignore-scripts blockt malicious
@@ -57,11 +61,12 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Provenance-Publish: signiert das Tarball mit Sigstore + erzeugt
-      # SLSA-Attestation die in die npm-Registry geschrieben wird.
-      # Konsumenten koennen via `npm view techlogia provenance` checken
-      # wo das Package gebaut wurde und ob die Signatur gueltig ist.
+      # Trusted Publishing (seit 2026-06-05): Auth laeuft via GitHub-OIDC
+      # gegen den auf npmjs.com konfigurierten Trusted Publisher
+      # (Org TechLogia-de, Repo techlogia-cli, Workflow publish.yml) —
+      # KEIN NPM_TOKEN-Secret mehr. Hintergrund: npm hat Ende 2025 alle
+      # Classic-Tokens revoked + Granular-Tokens auf 90 Tage begrenzt;
+      # das abgelaufene Secret liess jeden Publish mit E404 scheitern.
+      # Provenance (SLSA Build Level 2 + Sigstore) bleibt wie gehabt.
       - name: Publish to npm with provenance
         run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
