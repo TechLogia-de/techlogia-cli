@@ -3,6 +3,46 @@
 All notable changes to the published `techlogia` npm package are
 documented in this file. The project follows [Semantic Versioning].
 
+## [0.5.2] — 2026-06-05 (Dependency refresh + audit follow-up)
+
+### Security
+
+- **`safe()` sanitiser applied to `blog read` and `legal show`.** Both
+  commands rendered `marked` output (and titles / slugs / excerpts)
+  without the ANSI filter introduced in 0.5.0 — `lab` had it, blog and
+  legal were missed. Server-controlled content can no longer inject
+  terminal escape sequences. Document bodies use an explicit length
+  limit (200 KB blog / 500 KB legal) so the default 4 KB truncation
+  cannot cut off legal texts.
+- **`maxRedirects: 0` on every API client** (including the token-refresh
+  call). The API never redirects; silently following one could hand the
+  Bearer / refresh token to a hijacked host. Fail loud instead.
+- **`lab attach` refuses `ws://` to non-loopback hosts.** An
+  `http://`-configured `TECHLOGIA_API` would have sent the JWT
+  (WS subprotocol) in cleartext. `http://localhost` dev setups keep
+  working.
+
+### Fixed
+
+- **Browser login on Windows.** `spawn("start", …)` always failed with
+  `ENOENT` (`start` is a cmd.exe builtin, not an executable). Now uses
+  `cmd /c start` with verbatim quoting so URL metacharacters (`&`)
+  cannot be interpreted by the shell.
+- **`blog read` showed `[object Object]` as author.** The live API
+  returns an author object (`{username, display_name}`); the CLI
+  expected a string. Both schemas are now accepted (5 new tests).
+
+### Dependencies (audit: 0 vulnerabilities)
+
+- `commander` 12 → 13 (still CommonJS, still Node ≥ 18)
+- `vitest` 3 → 4 — closes the critical GHSA-5xrq-8626-4rwp advisory
+  (dev-only, Vitest UI arbitrary file read/execute)
+- `axios` floor raised to ≥ 1.17.0, `ws` ≥ 8.21.0,
+  `shell-quote` ≥ 1.8.4, `typescript` 5.9
+- `chalk` / `ora` / `conf` / `marked` majors are intentionally **not**
+  bumped (ESM-only); the policy is now documented in `CONTRIBUTING.md`
+  ("Dependency policy")
+
 ## [0.5.0] — 2026-05-23 (Senior Security Audit)
 
 ### Security (P1–P7 from the senior audit)

@@ -5,9 +5,14 @@ import { markedTerminal } from "marked-terminal";
 import { apiAnon } from "../api/client";
 import { LegalDocument, pickLocaleText } from "../api/types";
 import { config } from "../config";
-import { formatDate, printError, ui } from "../ui";
+import { formatDate, printError, safe, ui } from "../ui";
 
 marked.use(markedTerminal() as never);
+
+// Rechtstexte (Datenschutz, AGB) sind deutlich laenger als das safe()-
+// Default-Limit von 4000 Zeichen — explizites maxLen verhindert, dass die
+// Anzeige mitten im Dokument abbricht (rechtlich relevant!).
+const LEGAL_MAX_LEN = 500_000;
 
 const KNOWN_SLUGS = ["impressum", "datenschutz", "agb", "widerruf"];
 
@@ -36,10 +41,11 @@ legalCommand
       const resp = await apiAnon.get<LegalDocument>(`/api/legal/${slug}`);
       const doc = resp.data;
       const docRec = doc as unknown as Record<string, unknown>;
-      const title = pickLocaleText(docRec, "title", config.get("locale")) ?? doc.type ?? slug.toUpperCase();
+      // safe() auf alle Server-Strings — ANSI-Injection-Schutz (ui.ts P1).
+      const title = safe(pickLocaleText(docRec, "title", config.get("locale")) ?? doc.type ?? slug.toUpperCase());
       console.log("");
       console.log(ui.bold(title));
-      const versionMeta = [doc.version ? `Version ${doc.version}` : null, doc.updated_at ? `Stand ${formatDate(doc.updated_at)}` : null]
+      const versionMeta = [doc.version ? `Version ${safe(doc.version)}` : null, doc.updated_at ? `Stand ${formatDate(doc.updated_at)}` : null]
         .filter(Boolean)
         .join(" · ");
       if (versionMeta) console.log(ui.dim(versionMeta));
@@ -50,7 +56,9 @@ legalCommand
         doc.content_markdown ??
         doc.content_html ??
         "";
-      console.log(await marked.parse(body));
+      // ANSI-Schutz wie in lab.ts: safe() vor UND nach marked — war hier
+      // vergessen (Audit-Finding CRITICAL-1, 2026-06-05).
+      console.log(safe(await marked.parse(safe(body, LEGAL_MAX_LEN)), LEGAL_MAX_LEN));
     } catch (err) {
       printError(err);
     }

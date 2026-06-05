@@ -42,6 +42,10 @@ async function maybeNotifyUpdate(): Promise<void> {
     // Cache-File existiert nicht — erster Check, weiter machen.
   }
   try {
+    // require() statt import: tsup inline'd die package.json zur BUILD-Zeit
+    // in den Single-File-Bundle. Zur Laufzeit liegt neben dist/index.js
+    // keine package.json mehr — ein dynamischer import() wuerde ins Leere
+    // greifen. Gleicher Mechanismus wie CLI_VERSION in api/client.ts.
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require("../package.json") as { name: string; version: string };
     const url = `https://registry.npmjs.org/${encodeURIComponent(pkg.name)}/latest`;

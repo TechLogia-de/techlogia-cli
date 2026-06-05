@@ -37,7 +37,9 @@ async function refreshAccessToken(): Promise<string | null> {
       const resp = await axios.post<TokenResponse>(
         `${getApiBaseUrl()}/api/auth/refresh`,
         { refresh_token: refresh },
-        { headers: { "User-Agent": USER_AGENT } },
+        // maxRedirects 0 wie in createClient — der Refresh-Token ist das
+        // wertvollste Secret der CLI, darf nie einem Redirect folgen.
+        { headers: { "User-Agent": USER_AGENT }, maxRedirects: 0 },
       );
       const { access_token, refresh_token } = resp.data;
       await saveTokens(access_token, refresh_token);
@@ -66,6 +68,12 @@ export function createClient(opts: ApiClientOptions = {}): AxiosInstance {
     // 4xx propagieren wir als Exception (default), 5xx ebenfalls.
     // Wir handhaben sie zentral im Error-Renderer.
     validateStatus: (s) => s >= 200 && s < 300,
+    // Keine stillen Redirects (Audit HIGH-2, 2026-06-05): unsere API
+    // redirected nie — ein Redirect heisst Fehlkonfiguration oder Angriff
+    // (DNS-Hijack koennte den Bearer-Token zu fremdem Host umleiten).
+    // Lieber laut fehlschlagen als Token leaken. Beim Zurueckbauen pruefen:
+    // FastAPI-Trailing-Slash-307s wuerden dann wieder still durchlaufen.
+    maxRedirects: 0,
   });
 
   if (opts.auth !== false) {

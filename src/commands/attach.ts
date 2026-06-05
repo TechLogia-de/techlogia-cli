@@ -4,7 +4,7 @@ import { api } from "../api/client";
 import { getAccessToken } from "../api/storage";
 import { LabSession, sessionId } from "../api/types";
 import { getApiBaseUrl } from "../config";
-import { printError, ui } from "../ui";
+import { printError, safe, ui } from "../ui";
 
 // `lab attach` — bidirektionales Terminal in die laufende Lab-VM, direkt
 // im CLI. Spiegelt das Web-Player-Verhalten:
@@ -27,9 +27,11 @@ function parseDetachSequence(): number[] {
   const m = env.match(/^\^([A-Z@\[\\\]\^_?])\^([A-Z@\[\\\]\^_?])$/);
   if (!m) {
     // Invalid Format — fail-loud waere User-feindlich (CLI crasht beim
-    // Start). Stattdessen Warning auf stderr + Default-Fallback.
-    process.stderr.write(
-      `Warnung: TECHLOGIA_DETACH="${env}" ist ungueltig (erwartet ^X^Y). Default Ctrl-P Ctrl-Q.\n`,
+    // Start). Stattdessen Warning + Default-Fallback. ui.warn() nutzt
+    // console.warn → landet auf stderr, stoert also kein Piping von stdout.
+    // env-Wert durch safe() — env-Vars sind injizierbar (ANSI-Schutz).
+    ui.warn(
+      `TECHLOGIA_DETACH="${safe(env, 60)}" ist ungueltig (erwartet ^X^Y). Default Ctrl-P Ctrl-Q.`,
     );
     return [0x10, 0x11];
   }
@@ -95,6 +97,20 @@ export function attachToSession(sid: string, token: string): Promise<AttachResul
 
     if (!stdin.isTTY) {
       resolve({ kind: "error", message: "Terminal-Attach braucht ein TTY." });
+      return;
+    }
+
+    // Nicht-TLS (ws://) nur fuer Loopback-Dev erlauben: der JWT geht als
+    // Subprotocol-Header im Upgrade-Request mit — ueber Klartext-HTTP zu
+    // einem fremden Host waere er per MitM lesbar (Audit HIGH-4, 2026-06-05).
+    // TECHLOGIA_API=http://localhost:8000 (lokales Backend) bleibt erlaubt.
+    const baseHost = new URL(getApiBaseUrl()).hostname;
+    const isLoopback = baseHost === "localhost" || baseHost === "127.0.0.1" || baseHost === "[::1]" || baseHost === "::1";
+    if (!getApiBaseUrl().startsWith("https:") && !isLoopback) {
+      resolve({
+        kind: "error",
+        message: "Attach verweigert: API-URL nutzt http:// (unverschluesselt) — JWT wuerde im Klartext uebertragen. Bitte https:// verwenden.",
+      });
       return;
     }
 

@@ -340,6 +340,12 @@ export async function runShell(program: Command): Promise<void> {
           rl.close();
           return;
         }
+        // Nur diese 3 Commands aendern den VM-Session-Zustand serverseitig
+        // (start legt an, stop terminiert, status kann Reaper-Terminierung
+        // sichtbar machen). Der Prompt zeigt die aktive Session an — ohne
+        // Refresh wuerde er nach `lab stop` noch "VM laeuft" anzeigen.
+        // Bewusst KEIN Refresh nach jedem Command: das waere 1 API-Call
+        // pro Eingabe (Latenz im REPL + unnoetige Backend-Last).
         const trimmed = line.trim().replace(/^\//, "").trim();
         if (
           trimmed.startsWith("lab start") ||

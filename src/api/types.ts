@@ -153,6 +153,22 @@ export interface CostEstimate {
 // content_de/content_en. Wir tolerieren zusaetzlich ein single "title"
 // und "content_html/content_markdown" für Forward-Compat falls das
 // Schema sich vereinheitlicht.
+export interface BlogAuthor {
+  username?: string;
+  display_name?: string | null;
+}
+
+/**
+ * Autor-Anzeigename aus beiden API-Schemata (String oder Objekt).
+ * display_name hat Vorrang vor username; undefined wenn nichts da ist,
+ * damit Call-Sites den Meta-Teil per filter(Boolean) weglassen koennen.
+ */
+export function authorName(author: BlogPost["author"]): string | undefined {
+  if (!author) return undefined;
+  if (typeof author === "string") return author;
+  return author.display_name ?? author.username ?? undefined;
+}
+
 export interface BlogPost {
   id?: number;
   slug?: string;
@@ -163,7 +179,10 @@ export interface BlogPost {
   excerpt_de?: string;
   excerpt_en?: string;
   published_at?: string;
-  author?: string;
+  // Live-API liefert seit Blog-Autorenprofilen ein Objekt, aeltere
+  // Responses einen String — beides akzeptieren (Schema-Drift-Schutz,
+  // Audit 2026-06-05: vorher renderte die CLI "[object Object]").
+  author?: string | BlogAuthor;
   content_html?: string;
   content_markdown?: string;
   content_de?: string;

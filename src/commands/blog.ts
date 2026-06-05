@@ -3,14 +3,21 @@ import { marked } from "marked";
 // @ts-expect-error - marked-terminal hat keine eigenen TS-Types für v7
 import { markedTerminal } from "marked-terminal";
 import { apiAnon } from "../api/client";
-import { BlogPost, pickLocaleText } from "../api/types";
+import { authorName, BlogPost, pickLocaleText } from "../api/types";
 import { config } from "../config";
-import { formatDate, printError, ui } from "../ui";
+import { formatDate, printError, safe, ui } from "../ui";
 
 marked.use(markedTerminal() as never);
 
+// Volle Artikel sind laenger als das safe()-Default-Limit von 4000 Zeichen —
+// ohne explizites maxLen wuerde der Body mitten im Text abgeschnitten.
+// ANSI-Filterung bleibt identisch, nur die Truncation-Grenze ist hoeher.
+const ARTICLE_MAX_LEN = 200_000;
+
 function blogTitle(p: BlogPost): string {
-  return pickLocaleText(p as unknown as Record<string, unknown>, "title", config.get("locale")) ?? p.slug ?? "(ohne Titel)";
+  // safe() hier zentral statt an jedem Call-Site — Titel sind Server-Strings
+  // (ANSI-Injection-Schutz, siehe ui.ts P1 2026-05-23).
+  return safe(pickLocaleText(p as unknown as Record<string, unknown>, "title", config.get("locale")) ?? p.slug ?? "(ohne Titel)");
 }
 
 function blogBody(p: BlogPost): string {
@@ -52,10 +59,10 @@ blogCommand
       console.log(ui.dim("─".repeat(60)));
       for (const p of posts) {
         console.log(`${ui.cyan("●")} ${ui.bold(blogTitle(p))}`);
-        const slug = p.slug ?? "(kein slug)";
+        const slug = safe(p.slug ?? "(kein slug)");
         console.log(`  ${ui.dim(slug)} · ${ui.dim(formatDate(p.published_at))}`);
         const excerpt = pickLocaleText(p as unknown as Record<string, unknown>, "excerpt", config.get("locale"));
-        if (excerpt) console.log(`  ${ui.dim(excerpt.slice(0, 120))}`);
+        if (excerpt) console.log(`  ${ui.dim(safe(excerpt).slice(0, 120))}`);
         console.log("");
       }
       console.log(ui.dim("Lesen: ") + ui.cyan("techlogia blog read <slug>"));
@@ -73,12 +80,15 @@ blogCommand
       const post = resp.data;
       console.log("");
       console.log(ui.bold(blogTitle(post)));
-      const meta = [post.author, formatDate(post.published_at)].filter(Boolean).join(" · ");
+      const meta = [safe(authorName(post.author)), formatDate(post.published_at)].filter(Boolean).join(" · ");
       if (meta) console.log(ui.dim(meta));
       console.log(ui.dim("─".repeat(60)));
       console.log("");
       const body = blogBody(post);
-      console.log(await marked.parse(body));
+      // ANSI-Schutz wie in lab.ts: safe() VOR marked (rohe Sequenzen im
+      // Quelltext) UND NACH marked (Renderer reicht HTML-Entities durch).
+      // War hier vergessen — Audit-Finding CRITICAL-1, 2026-06-05.
+      console.log(safe(await marked.parse(safe(body, ARTICLE_MAX_LEN)), ARTICLE_MAX_LEN));
     } catch (err) {
       printError(err);
     }
