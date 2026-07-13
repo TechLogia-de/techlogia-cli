@@ -28,6 +28,14 @@ documented in this file. The project follows [Semantic Versioning].
   `axios` was `4.0.5` (still vulnerable). The override forces the patched
   version for end users on install, not just the dev lockfile.
 
+### Supply chain
+
+- **SBOM (CycloneDX) is now generated on every release** in the publish
+  workflow (`npm sbom --omit=dev`, production dependency tree) and uploaded
+  as a build artifact — early preparation for the EU Cyber Resilience Act
+  SBOM requirement (mandatory from 2027-12-11). Complements the existing
+  Sigstore provenance and Trusted Publishing (OIDC, no long-lived tokens).
+
 ## [0.5.2] — 2026-06-05 (Dependency refresh + audit follow-up)
 
 ### Security

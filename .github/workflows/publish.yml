@@ -66,6 +66,28 @@ jobs:
       - name: Build
         run: npm run build
 
+      # SBOM (Software Bill of Materials) — Vorlauf auf die CRA-SBOM-Pflicht
+      # (EU Cyber Resilience Act, ab 2027-12-11 verpflichtend). CycloneDX-
+      # Format, NUR Produktions-Deps (--omit=dev) — spiegelt exakt das, was
+      # ein `npm i techlogia` beim Nutzer installiert (die Angriffsflaeche des
+      # veroeffentlichten Pakets, nicht Test-/Build-Tooling). Rein additiv,
+      # kein Gate: schlaegt der Schritt fehl, blockt er den Publish nicht.
+      - name: Generate SBOM (CycloneDX, production deps)
+        run: npm sbom --sbom-format cyclonedx --omit=dev > sbom.cdx.json
+        continue-on-error: true
+
+      # SBOM als Build-Artefakt aufbewahren (retention default 90 Tage) —
+      # ueber actions/upload-artifact, damit KEINE contents:write-Permission
+      # noetig ist (minimaler Token-Scope, s. permissions oben). Fuer eine
+      # dauerhaft oeffentliche SBOM koennte man sie spaeter zusaetzlich ans
+      # GitHub-Release haengen (braucht dann contents:write).
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: sbom.cdx.json
+          if-no-files-found: warn
+
       # Trusted Publishing (seit 2026-06-05): Auth laeuft via GitHub-OIDC
       # gegen den auf npmjs.com konfigurierten Trusted Publisher
       # (Org TechLogia-de, Repo techlogia-cli, Workflow publish.yml) —

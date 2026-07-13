@@ -6,3 +6,6 @@ dist/
 .env.local
 coverage/
 .vitest-cache/
+
+# SBOM wird in CI erzeugt (Publish-Workflow), nie committen
+sbom*.json
