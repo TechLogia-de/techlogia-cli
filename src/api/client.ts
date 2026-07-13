@@ -2,6 +2,7 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from "ax
 import { getApiBaseUrl } from "../config";
 import { clearTokens, getAccessToken, getRefreshToken, saveTokens } from "./storage";
 import { TokenResponse } from "./types";
+import { assertSafeApiBaseUrl, warnIfNonDefaultHost } from "./url-guard";
 
 // CLI-Version aus package.json — wird vom Bundler inline'd dank tsup
 // (CommonJS require resolved at build time). Wir lesen NICHT zur Laufzeit,
@@ -34,6 +35,10 @@ async function refreshAccessToken(): Promise<string | null> {
     const refresh = await getRefreshToken();
     if (!refresh) return null;
     try {
+      // Der Refresh-Token ist das wertvollste Secret der CLI — vor dem rohen
+      // axios.post (umgeht die Instance-Interceptor) die Basis-URL prüfen,
+      // damit er nie an einen http-/Fremd-Host geht.
+      assertSafeApiBaseUrl(getApiBaseUrl());
       const resp = await axios.post<TokenResponse>(
         `${getApiBaseUrl()}/api/auth/refresh`,
         { refresh_token: refresh },
@@ -74,6 +79,16 @@ export function createClient(opts: ApiClientOptions = {}): AxiosInstance {
     // Lieber laut fehlschlagen als Token leaken. Beim Zurueckbauen pruefen:
     // FastAPI-Trailing-Slash-307s wuerden dann wieder still durchlaufen.
     maxRedirects: 0,
+  });
+
+  // Guard VOR jeder Anfrage (auch anonyme): kein Request/Token an eine
+  // http-Nicht-Loopback- oder ungültige URL. Läuft pro Request (nicht bei
+  // Modul-Load), crasht also nicht `techlogia --help`. Wirft → das
+  // Command-try/catch rendert die Meldung.
+  instance.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+    assertSafeApiBaseUrl(getApiBaseUrl());
+    warnIfNonDefaultHost(getApiBaseUrl());
+    return config;
   });
 
   if (opts.auth !== false) {

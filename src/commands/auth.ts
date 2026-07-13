@@ -86,16 +86,20 @@ function openBrowser(url: string): void {
   if (!allowedHosts.has(u.hostname) && !process.env.TECHLOGIA_API) {
     throw new Error(`openBrowser: nicht erlaubter Host ${u.hostname}`);
   }
+  // Ab hier NUR die durch new URL() normalisierte href verwenden — nie den
+  // rohen Eingabe-String. WHATWG-Normalisierung percent-encodet Metazeichen
+  // (inkl. "), sodass das Windows-Quoting unten nachweisbar unbrechbar ist.
+  const href = u.href;
   // Windows-Sonderfall (Audit HIGH-3, 2026-06-05): "start" ist ein
   // cmd.exe-Builtin, KEIN Executable — spawn("start", ...) wirft ENOENT
   // und crasht den Login. Deshalb cmd /c start. windowsVerbatimArguments
   // + manuelle Quotes sind Pflicht, weil cmd.exe sonst & = ? in der URL
   // als Metazeichen parst (Command-Injection-Vektor, wenn TECHLOGIA_API
-  // attacker-controlled ist). Literale `"` kann eine valide URL nicht
-  // enthalten (immer %22-encoded) — das Quoting ist also nicht brechbar.
+  // attacker-controlled ist). Literale `"` kann u.href nicht enthalten
+  // (immer %22-encoded) — das Quoting ist also nicht brechbar.
   // Das leere "" davor ist der Fenstertitel-Platzhalter von `start`.
   if (process.platform === "win32") {
-    spawn("cmd", ["/c", "start", '""', `"${url}"`], {
+    spawn("cmd", ["/c", "start", '""', `"${href}"`], {
       detached: true,
       stdio: "ignore",
       windowsVerbatimArguments: true,
@@ -103,7 +107,7 @@ function openBrowser(url: string): void {
     return;
   }
   const cmd = process.platform === "darwin" ? "open" : "xdg-open";
-  spawn(cmd, [url], { detached: true, stdio: "ignore" }).unref();
+  spawn(cmd, [href], { detached: true, stdio: "ignore" }).unref();
 }
 
 export interface WebLoginResult {
