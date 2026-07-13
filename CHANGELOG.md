@@ -3,6 +3,31 @@
 All notable changes to the published `techlogia` npm package are
 documented in this file. The project follows [Semantic Versioning].
 
+## [0.5.3] — 2026-07-13 (Security hardening: base-URL guard + CVE override)
+
+### Security
+
+- **REST client now enforces `https` (except loopback), matching the WS
+  path.** `lab attach` already refused `http://` to non-loopback hosts,
+  but the REST client attached the Bearer token to any `TECHLOGIA_API`
+  URL — `http://` or a foreign host — enabling token exfiltration via a
+  tampered env var / shell profile. A shared guard (`src/api/url-guard.ts`,
+  `assertSafeApiBaseUrl` + `warnIfNonDefaultHost`) now runs as a request
+  interceptor on every call (and on the raw token-refresh call): `http://`
+  to a non-loopback host is a hard error (no token sent), a non-default
+  `https` host prints one loud warning, and `http://localhost` dev setups
+  keep working. `lab attach` uses the same guard now (one source of truth).
+- **`openBrowser` passes the WHATWG-normalised `URL.href`** (not the raw
+  input) to `spawn`, so the Windows `cmd /c start` verbatim quoting is
+  provably unbreakable (a literal `"` cannot survive URL normalisation).
+
+### Dependencies (audit: 0 vulnerabilities)
+
+- **`form-data` pinned to `>=4.0.6` via `overrides`** — GHSA-hmw2-7cc7-3qxx
+  (HIGH, CRLF injection) affects `<4.0.6`; the transitive resolution via
+  `axios` was `4.0.5` (still vulnerable). The override forces the patched
+  version for end users on install, not just the dev lockfile.
+
 ## [0.5.2] — 2026-06-05 (Dependency refresh + audit follow-up)
 
 ### Security
