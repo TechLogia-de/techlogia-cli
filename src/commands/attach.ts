@@ -4,6 +4,7 @@ import { api } from "../api/client";
 import { getAccessToken } from "../api/storage";
 import { LabSession, sessionId } from "../api/types";
 import { getApiBaseUrl } from "../config";
+import { assertSafeApiBaseUrl } from "../api/url-guard";
 import { printError, safe, ui } from "../ui";
 
 // `lab attach` — bidirektionales Terminal in die laufende Lab-VM, direkt
@@ -104,12 +105,13 @@ export function attachToSession(sid: string, token: string): Promise<AttachResul
     // Subprotocol-Header im Upgrade-Request mit — ueber Klartext-HTTP zu
     // einem fremden Host waere er per MitM lesbar (Audit HIGH-4, 2026-06-05).
     // TECHLOGIA_API=http://localhost:8000 (lokales Backend) bleibt erlaubt.
-    const baseHost = new URL(getApiBaseUrl()).hostname;
-    const isLoopback = baseHost === "localhost" || baseHost === "127.0.0.1" || baseHost === "[::1]" || baseHost === "::1";
-    if (!getApiBaseUrl().startsWith("https:") && !isLoopback) {
+    // Geteilte Regel mit dem REST-Client (url-guard.ts) — eine Quelle.
+    try {
+      assertSafeApiBaseUrl(getApiBaseUrl());
+    } catch (err) {
       resolve({
         kind: "error",
-        message: "Attach verweigert: API-URL nutzt http:// (unverschluesselt) — JWT wuerde im Klartext uebertragen. Bitte https:// verwenden.",
+        message: err instanceof Error ? err.message : "API-URL unsicher.",
       });
       return;
     }
