@@ -48,6 +48,30 @@ export function safe(input: unknown, maxLen = 4000): string {
   return cleaned.length > maxLen ? cleaned.slice(0, maxLen) + "…" : cleaned;
 }
 
+/**
+ * Anzeigename des OAuth-Login-Anbieters (google, github, apple, eduplaces –
+ * die Werte, die das Backend in `users.oauth_provider` setzt).
+ *
+ * why: CodeQL (js/clear-text-logging, Alerts #1/#2) stuft `oauth_provider`
+ * wegen des Namens als sensibel ein. Wir geben deshalb nie den Server-String
+ * selbst aus, sondern nur Literale aus dieser Allowlist; Unbekanntes wird
+ * generisch angezeigt. Nebeneffekt: kein ungefilterter Server-String im Terminal.
+ */
+export function oauthProviderLabel(provider: unknown): string {
+  switch (provider) {
+    case "google":
+      return "google";
+    case "github":
+      return "github";
+    case "apple":
+      return "apple";
+    case "eduplaces":
+      return "eduplaces";
+    default:
+      return "externer Anbieter";
+  }
+}
+
 export const ui = {
   success: (msg: string): void => console.log(chalk.green("✓ ") + msg),
   error: (msg: string): void => console.error(chalk.red("✗ ") + msg),

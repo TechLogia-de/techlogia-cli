@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { api } from "../api/client";
 import { AuthMeResponse } from "../api/types";
-import { formatDate, printError, ui } from "../ui";
+import { formatDate, oauthProviderLabel, printError, ui } from "../ui";
 
 export const accountCommand = new Command("account").description("Eigenes Konto verwalten");
 
@@ -19,7 +19,7 @@ accountCommand
       console.log(`  Anzeigename    : ${me.display_name ?? ui.dim("—")}`);
       console.log(`  Rolle          : ${me.role}`);
       console.log(`  MFA            : ${me.mfa_enabled ? ui.green("aktiviert") : ui.dim("aus")}`);
-      if (me.oauth_provider) console.log(`  Login-Provider : ${me.oauth_provider}`);
+      if (me.oauth_provider) console.log(`  Login-Provider : ${oauthProviderLabel(me.oauth_provider)}`);
       if (me.xp_total != null) {
         const level = Math.floor(Math.sqrt(me.xp_total / 100));
         console.log(`  XP             : ${me.xp_total} (Level ${level})`);

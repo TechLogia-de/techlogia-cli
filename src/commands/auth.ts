@@ -9,7 +9,7 @@ import { clearTokens, saveTokens, storageBackend } from "../api/storage";
 import { AuthMeResponse, TokenResponse } from "../api/types";
 import { config, getApiBaseUrl } from "../config";
 import { getPersonaForUser } from "../personas";
-import { printError, safe, ui } from "../ui";
+import { oauthProviderLabel, printError, safe, ui } from "../ui";
 
 // Login-Flow: drei Antwortzweige
 // 1) 200 + {access_token,...}     → eingeloggt
@@ -59,7 +59,7 @@ async function performLogin(email: string, password: string): Promise<TokenRespo
       const detail = (data as { detail?: string; oauth_provider?: string }).detail;
       const provider = (data as { oauth_provider?: string }).oauth_provider;
       if (provider) {
-        ui.error(`Dieses Konto nutzt ${provider}-Login. Email-Passwort funktioniert hier nicht.`);
+        ui.error(`Dieses Konto nutzt ${oauthProviderLabel(provider)}-Login. Email-Passwort funktioniert hier nicht.`);
         ui.info(`Bitte im Browser über https://techlogia.de/login einloggen.`);
         return null;
       }
