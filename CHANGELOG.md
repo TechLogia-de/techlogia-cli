@@ -3,7 +3,7 @@
 All notable changes to the published `techlogia` npm package are
 documented in this file. The project follows [Semantic Versioning].
 
-## [0.5.3] — 2026-07-13 (Security hardening: base-URL guard + CVE override)
+## [0.5.3] — 2026-11-04 (Security hardening: base-URL guard + CVE overrides + dependency refresh)
 
 ### Security
 
@@ -20,9 +20,23 @@ documented in this file. The project follows [Semantic Versioning].
 - **`openBrowser` passes the WHATWG-normalised `URL.href`** (not the raw
   input) to `spawn`, so the Windows `cmd /c start` verbatim quoting is
   provably unbreakable (a literal `"` cannot survive URL normalisation).
+- **`oauth_provider` is only printed from an allowlist** (#31, CodeQL
+  `js/clear-text-logging`). `account profile` and the 403 branch of
+  `login --terminal` now go through `oauthProviderLabel()`, which returns
+  only literals for the known providers (google, github, apple,
+  eduplaces) and `externer Anbieter` otherwise. Output for known
+  providers is unchanged.
 
-### Dependencies (audit: 0 vulnerabilities)
+### Dependencies
 
+- **Dependency refresh for open advisories** (718c97b): `shell-quote`
+  (critical) raised to `^1.12.0`, `axios` to `^1.21.0`; `fast-uri`,
+  `follow-redirects`, `postcss`, `source-map-js` and `vite` pinned to
+  patched versions via `overrides`; dev dependency `vitest` 4.1.12.
+  `npm audit` afterwards reports only `esbuild` (moderate, dev server
+  on Windows, not part of the published package).
+  The `form-data` override from the first 0.5.3 draft was dropped again;
+  the lockfile resolves `form-data` 4.0.6 (patched) via the new `axios`.
 - **`form-data` pinned to `>=4.0.6` via `overrides`** — GHSA-hmw2-7cc7-3qxx
   (HIGH, CRLF injection) affects `<4.0.6`; the transitive resolution via
   `axios` was `4.0.5` (still vulnerable). The override forces the patched
